@@ -26,7 +26,9 @@ final class FloatingPetWindowManager: NSObject, NSWindowDelegate {
         window.level = .popUpMenu
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.hasShadow = true
+        // Transparent borderless window shadows are inconsistent on older
+        // macOS versions. PetView draws an alpha-aware shadow around the sprite.
+        window.hasShadow = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         window.isMovableByWindowBackground = true
         window.delegate = self

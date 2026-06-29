@@ -63,7 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(showChatNotif),
+            selector: #selector(showChatNotif(_:)),
             name: .showChat,
             object: nil
         )
@@ -226,13 +226,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Chat
 
-    func showChat() {
+    func showChat(groupID: String? = nil) {
         if let existing = chatWindow, existing.isVisible {
             existing.makeKeyAndOrderFront(nil)
+            if let groupID {
+                NotificationCenter.default.post(
+                    name: .selectChatGroup,
+                    object: nil,
+                    userInfo: ["groupID": groupID]
+                )
+            }
             return
         }
 
-        let chatView = ChatView(appState: appState)
+        let chatView = ChatView(appState: appState, initialGroupID: groupID)
 
         let hostingView = NSHostingView(rootView: chatView)
         let window = NSWindow(
@@ -307,7 +314,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showGroupInfoNotif() { showGroupInfo() }
     @objc private func showIntervalModifierNotif() { showIntervalModifier() }
     @objc private func showSettingsNotif() { showSettings() }
-    @objc private func showChatNotif() { showChat() }
+    @objc private func showChatNotif(_ notification: Notification) {
+        let groupID = notification.userInfo?["groupID"] as? String
+        showChat(groupID: groupID)
+    }
     @objc private func localDataClearedNotif() { resetWindowsForOnboarding() }
 
     // MARK: - Sleep / Wake

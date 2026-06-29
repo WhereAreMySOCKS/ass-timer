@@ -3,31 +3,47 @@ import SwiftUI
 /// The emoji/image pet display with animation states.
 struct PetView: View {
     @ObservedObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var wiggleAngle: Angle = .zero
+    @State private var clickScale: CGFloat = 1
+    @State private var clickOffsetY: CGFloat = 0
+    @State private var clickResetTask: DispatchWorkItem?
 
     var body: some View {
         let content = Group {
             if let spriteName = spriteNameForCurrentState,
                let spriteImage = SpriteLoader.loadSprite(named: spriteName) {
-                Image(nsImage: spriteImage)
-                    .resizable()
-                    .scaledToFit()
-                    .scaleEffect(x: shouldFlipSprite ? -1 : 1, y: 1)
-                    .frame(width: Constants.petSpriteSize.width, height: Constants.petSpriteSize.height)
+                shadowedPet {
+                    Image(nsImage: spriteImage)
+                        .resizable()
+                        .scaledToFit()
+                        .scaleEffect(x: shouldFlipSprite ? -1 : 1, y: 1)
+                        .frame(width: Constants.petSpriteSize.width, height: Constants.petSpriteSize.height)
+                }
             } else if let imageName = appState.config.petImageName,
                       let nsImage = NSImage(named: imageName) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: Constants.petSpriteSize.width, height: Constants.petSpriteSize.height)
+                shadowedPet {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: Constants.petSpriteSize.width, height: Constants.petSpriteSize.height)
+                }
             } else {
-                Text(appState.config.petEmoji ?? "🐱")
-                    .font(.system(size: 128))
+                shadowedPet {
+                    Text(appState.config.petEmoji ?? "🐱")
+                        .font(.system(size: 128))
+                }
             }
         }
 
         applyAnimation(content)
             .rotationEffect(wiggleAngle)
+            .scaleEffect(clickScale)
+            .offset(y: clickOffsetY)
+            .onChange(of: appState.interactionAnimationID) { animationID in
+                guard animationID != nil else { return }
+                playClickResponse()
+            }
             .onChange(of: appState.groupEventAnimationID) { _ in
                 guard appState.groupEventAnimationID != nil else { return }
                 withAnimation(AnimationService.wiggle) {
@@ -39,7 +55,10 @@ struct PetView: View {
                     }
                 }
             }
-
+            .onDisappear {
+                clickResetTask?.cancel()
+                clickResetTask = nil
+            }
     }
 
     private var spriteNameForCurrentState: String? {
@@ -69,7 +88,7 @@ struct PetView: View {
         case .running:
             // No idle bob when walking or flying — window is already moving
             let activity = appState.activityEngine.activityState
-            if activity == .walking || activity == .flying {
+            if activity == .walking || activity == .flying || activity == .napping {
                 content
             } else {
                 content.idleAnimation()
@@ -77,33 +96,51 @@ struct PetView: View {
         case .reminder:
             content.reminderPulseAnimation()
         case .waitConfirm:
-            content.scaleEffect(0.9)
+            content.confirmationAnimation()
         case .reset:
             content
         }
     }
 
-    /// Trigger a bounce animation (called from interaction handler).
-    func playBounce() {
-        withAnimation(AnimationService.bounce) {
-            appState.isAnimating = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.4)) {
-                appState.isAnimating = false
-            }
+    /// Draw the shadow inside the transparent pet window instead of relying on
+    /// NSWindow's shape shadow, which is unreliable for borderless transparent
+    /// windows on older macOS releases.
+    private func shadowedPet<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        ZStack {
+            content()
+                .colorMultiply(.black)
+                .opacity(0.24)
+                .blur(radius: 5)
+                .offset(x: 0, y: 4)
+
+            content()
         }
     }
 
-    /// Trigger a flip animation (called from interaction handler).
-    func playFlip() {
-        withAnimation(AnimationService.flip) {
-            appState.isAnimating = true
+    private func playClickResponse() {
+        clickResetTask?.cancel()
+
+        guard !reduceMotion else {
+            clickScale = 1
+            clickOffsetY = 0
+            return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            withAnimation(.easeOut(duration: 0.1)) {
-                appState.isAnimating = false
+
+        // Fixed-duration curves are stable across supported macOS versions;
+        // SwiftUI spring behavior has varied between system releases.
+        withAnimation(.easeOut(duration: 0.09)) {
+            clickScale = 0.88
+            clickOffsetY = 4
+        }
+
+        let task = DispatchWorkItem {
+            withAnimation(.easeOut(duration: 0.18)) {
+                clickScale = 1
+                clickOffsetY = 0
             }
+            clickResetTask = nil
         }
+        clickResetTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09, execute: task)
     }
 }

@@ -118,25 +118,32 @@ struct GroupEventBubbleView: View {
 /// Chat message bubble: shows sender + message preview, auto-dismisses.
 struct ChatBubbleView: View {
     let item: BubbleItem
+    let onOpen: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            avatarOrEmoji
+        Button(action: onOpen) {
+            HStack(alignment: .top, spacing: 8) {
+                avatarOrEmoji
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.senderNickname ?? "群友")
-                    .font(.system(size: 11, weight: .black, design: .rounded))
-                    .foregroundStyle(Color.comicInk.opacity(0.7))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.senderNickname ?? "群友")
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .foregroundStyle(Color.comicInk.opacity(0.7))
 
-                Text(item.message ?? "")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.comicInk)
-                    .lineLimit(2)
-                    .frame(maxWidth: 180, alignment: .leading)
+                    Text(item.message ?? "")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.comicInk)
+                        .lineLimit(2)
+                        .frame(maxWidth: 180, alignment: .leading)
+                }
             }
+            .frame(width: 220, alignment: .leading)
+            .bubbleStyle()
+            .contentShape(Rectangle())
         }
-        .frame(width: 220, alignment: .leading)
-        .bubbleStyle()
+        .buttonStyle(.plain)
+        .accessibilityLabel("打开来自\(item.senderNickname ?? "群友")的群聊消息")
+        .help("打开群聊")
     }
 
     @ViewBuilder
@@ -178,7 +185,15 @@ struct BubbleOverlayView: View {
                             ))
 
                     case .chatMessage:
-                        ChatBubbleView(item: bubble)
+                        ChatBubbleView(item: bubble) {
+                            guard let groupID = bubble.groupID else { return }
+                            appState.removeBubble(id: bubble.id)
+                            NotificationCenter.default.post(
+                                name: .showChat,
+                                object: nil,
+                                userInfo: ["groupID": groupID]
+                            )
+                        }
                             .transition(.asymmetric(
                                 insertion: .move(edge: .trailing).combined(with: .opacity),
                                 removal: .move(edge: .trailing).combined(with: .opacity)

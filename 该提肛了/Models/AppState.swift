@@ -16,11 +16,13 @@ final class AppState: ObservableObject {
     @Published var config: UserConfig
     @Published var isLeaderboardVisible = false
     @Published var isGroupInfoVisible = false
-    @Published var isAnimating = false
     @Published var lastError: String?
     @Published var groupEventAnimationID: UUID?
     @Published var currentSpriteFrame: String?  // Current sprite keyframe (set by PetActivityEngine)
     @Published var interactionSpriteFrame: String?
+    @Published var interactionAnimationID: UUID?
+    @Published private(set) var chatUnreadCounts: [String: Int] = [:]
+    @Published private(set) var chatUnreadGroupOrder: [String] = []
     private var interactionSpriteResetTask: DispatchWorkItem?
     private var updateCheckTimer: Timer?
 
@@ -120,7 +122,14 @@ final class AppState: ObservableObject {
 
     // MARK: - Bubble Queue
 
-    func addBubble(_ kind: BubbleKind, senderNickname: String? = nil, senderPetEmoji: String? = nil, senderAvatarURL: String? = nil, message: String? = nil) {
+    func addBubble(
+        _ kind: BubbleKind,
+        senderNickname: String? = nil,
+        senderPetEmoji: String? = nil,
+        senderAvatarURL: String? = nil,
+        groupID: String? = nil,
+        message: String? = nil
+    ) {
         // Prevent duplicate reminder bubbles
         if kind == .reminder && bubbles.contains(where: { $0.kind == .reminder }) {
             return
@@ -131,6 +140,7 @@ final class AppState: ObservableObject {
             senderNickname: senderNickname,
             senderPetEmoji: senderPetEmoji,
             senderAvatarURL: senderAvatarURL,
+            groupID: groupID,
             message: message,
             timestamp: Date()
         )
@@ -143,11 +153,16 @@ final class AppState: ObservableObject {
             return a.timestamp < b.timestamp
         }
 
+        if kind == .groupEvent {
+            // React to another member's completion with the dedicated frame.
+            showInteractionSprite("哇", duration: 2)
+            groupEventAnimationID = UUID()
+        } else if kind == .chatMessage {
+            groupEventAnimationID = UUID()
+        }
+
         // Auto-dismiss group events and chat bubbles after 5 seconds
         if kind == .groupEvent || kind == .chatMessage {
-            // Trigger pet wiggle animation
-            groupEventAnimationID = UUID()
-
             let itemId = item.id
             DispatchQueue.main.asyncAfter(deadline: .now() + Constants.groupBubbleDuration) { [weak self] in
                 self?.removeBubble(id: itemId)
@@ -218,13 +233,20 @@ final class AppState: ObservableObject {
     // MARK: - Chat
 
     func onChatMessageReceived(groupID: String, message: ChatMessageResponse) {
+        LocalCacheManager.shared.mergeMessages([message], groupID: groupID)
+
         // Don't show a bubble for the user's own messages
         if message.user_id != config.userID {
+            chatUnreadCounts[groupID, default: 0] += 1
+            chatUnreadGroupOrder.removeAll { $0 == groupID }
+            chatUnreadGroupOrder.insert(groupID, at: 0)
+
             addBubble(
                 .chatMessage,
                 senderNickname: message.nickname,
                 senderPetEmoji: message.pet_emoji,
                 senderAvatarURL: message.avatar_url,
+                groupID: groupID,
                 message: message.content
             )
         }
@@ -240,6 +262,11 @@ final class AppState: ObservableObject {
         )
     }
 
+    func markChatGroupRead(_ groupID: String) {
+        chatUnreadCounts[groupID] = nil
+        chatUnreadGroupOrder.removeAll { $0 == groupID }
+    }
+
     func clearError(after seconds: TimeInterval = 3) {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
             self?.lastError = nil
@@ -249,6 +276,7 @@ final class AppState: ObservableObject {
     func showInteractionSprite(_ spriteName: String, duration: TimeInterval = 2) {
         interactionSpriteResetTask?.cancel()
         interactionSpriteFrame = spriteName
+        interactionAnimationID = UUID()
 
         let task = DispatchWorkItem { [weak self] in
             self?.interactionSpriteFrame = nil
@@ -340,11 +368,13 @@ final class AppState: ObservableObject {
         groupEventAnimationID = nil
         currentSpriteFrame = nil
         interactionSpriteFrame = nil
+        interactionAnimationID = nil
+        chatUnreadCounts = [:]
+        chatUnreadGroupOrder = []
         interactionSpriteResetTask?.cancel()
         interactionSpriteResetTask = nil
         isLeaderboardVisible = false
         isGroupInfoVisible = false
-        isAnimating = false
 
         Task {
             await wsClient?.disconnect()

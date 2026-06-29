@@ -25,6 +25,7 @@ struct BubbleItem: Identifiable, Equatable {
     let senderNickname: String?       // For group events & chat messages
     let senderPetEmoji: String?       // For group events & chat messages
     let senderAvatarURL: String?      // Avatar URL for group events & chat messages
+    let groupID: String?              // Destination for chat bubble navigation
     let message: String?              // For chat messages
     let timestamp: Date
 
@@ -33,6 +34,7 @@ struct BubbleItem: Identifiable, Equatable {
         senderNickname: String? = nil,
         senderPetEmoji: String? = nil,
         senderAvatarURL: String? = nil,
+        groupID: String? = nil,
         message: String? = nil,
         timestamp: Date = Date()
     ) {
@@ -40,6 +42,7 @@ struct BubbleItem: Identifiable, Equatable {
         self.senderNickname = senderNickname
         self.senderPetEmoji = senderPetEmoji
         self.senderAvatarURL = senderAvatarURL
+        self.groupID = groupID
         self.message = message
         self.timestamp = timestamp
     }

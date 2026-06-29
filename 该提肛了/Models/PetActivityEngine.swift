@@ -7,6 +7,7 @@ enum PetActivityState: Sendable {
     case standing
     case walking
     case flying
+    case napping
 }
 
 /// Manages the pet's stand→walk→stand activity cycle.
@@ -41,6 +42,9 @@ final class PetActivityEngine: ObservableObject {
     private var moveTimer: Timer?
     private var pendingWalkTask: DispatchWorkItem?  // Track asyncAfter so we can cancel
     private var flyTimer: Timer?                    // Parabolic animation display link
+    private var napTimer: Timer?
+    private var napEndTask: DispatchWorkItem?
+    private var napRequested = false
     private var flyStartTime: Date = .distantPast
     private var flyStartPosition: NSPoint = .zero
     private var flyTotalHorizontal: CGFloat = 0
@@ -65,6 +69,7 @@ final class PetActivityEngine: ObservableObject {
         stop()
         startStanding()
         scheduleNextFly()
+        scheduleNapCycle()
     }
 
     /// Stop all activity and clear sprite display.
@@ -77,6 +82,11 @@ final class PetActivityEngine: ObservableObject {
         pendingWalkTask = nil
         flyTimer?.invalidate()
         flyTimer = nil
+        napTimer?.invalidate()
+        napTimer = nil
+        napEndTask?.cancel()
+        napEndTask = nil
+        napRequested = false
         isFlyingLeft = false
         phase = .standing
         activityState = .standing
@@ -89,7 +99,7 @@ final class PetActivityEngine: ObservableObject {
 
     /// Immediately trigger a parabolic flight from a double-click.
     func triggerFlyUp() {
-        guard activityState != .flying else { return }
+        guard activityState != .flying, activityState != .napping else { return }
 
         flyTimer?.invalidate()
         flyTimer = nil
@@ -101,6 +111,61 @@ final class PetActivityEngine: ObservableObject {
         pendingWalkTask = nil
 
         startParabolicFlight()
+    }
+
+    // MARK: - Napping
+
+    /// Keep a wall-clock 15-minute cadence while the activity engine is running.
+    private func scheduleNapCycle() {
+        napTimer?.invalidate()
+        let interval = Constants.petNapInterval
+        napTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.requestNap()
+            }
+        }
+    }
+
+    private func requestNap() {
+        guard appState?.currentState == .running else { return }
+        guard activityState != .napping else { return }
+
+        // Let a short flight land instead of freezing the window in mid-air.
+        if activityState == .flying {
+            napRequested = true
+            return
+        }
+
+        startNap()
+    }
+
+    private func startNap() {
+        frameTimer?.invalidate()
+        frameTimer = nil
+        moveTimer?.invalidate()
+        moveTimer = nil
+        flyTimer?.invalidate()
+        flyTimer = nil
+        pendingWalkTask?.cancel()
+        pendingWalkTask = nil
+        napEndTask?.cancel()
+        napRequested = false
+        isWalkingLeft = false
+        isFlyingLeft = false
+
+        activityState = .napping
+        phase = .standing
+        updateSprite(name: "趴")
+
+        let duration = Constants.petNapDuration
+        let task = DispatchWorkItem { [weak self] in
+            guard let self, self.activityState == .napping else { return }
+            self.napEndTask = nil
+            self.startStanding()
+            self.scheduleNextFly()
+        }
+        napEndTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: task)
     }
 
 
@@ -321,7 +386,10 @@ final class PetActivityEngine: ObservableObject {
             scheduleNextFly()
             return
         }
-        guard activityState != .flying else { return }
+        guard activityState != .flying, activityState != .napping else {
+            scheduleNextFly()
+            return
+        }
 
         frameTimer?.invalidate()
         frameTimer = nil
@@ -435,6 +503,11 @@ final class PetActivityEngine: ObservableObject {
         // Persist the landed position
         if let window = petWindow {
             PersistenceManager.shared.saveWindowPosition(x: window.frame.origin.x, y: window.frame.origin.y)
+        }
+
+        if napRequested {
+            startNap()
+            return
         }
 
         // Resume normal stand→walk cycle

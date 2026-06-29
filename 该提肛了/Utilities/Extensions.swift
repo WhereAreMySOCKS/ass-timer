@@ -341,6 +341,7 @@ extension Notification.Name {
     static let showIntervalModifier = Notification.Name("ass_timer_show_interval_modifier")
     static let showSettings = Notification.Name("ass_timer_show_settings")
     static let showChat = Notification.Name("ass_timer_show_chat")
+    static let selectChatGroup = Notification.Name("ass_timer_select_chat_group")
     static let petWindowDidMove = Notification.Name("ass_timer_pet_window_did_move")
     static let chatMessageReceived = Notification.Name("chatMessageReceived")
     static let localDataCleared = Notification.Name("ass_timer_local_data_cleared")

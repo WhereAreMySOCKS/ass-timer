@@ -8,13 +8,18 @@ struct ChatView: View {
     @State private var selectedGroupID: String?
     @State private var messages: [ChatMessageResponse] = []
     @State private var inputText: String = ""
-    @State private var unreadCounts: [String: Int] = [:]
     @State private var isLoadingGroups = false
     @State private var isLoadingHistory = false
     @State private var hasMore = false
     @State private var groupError: String?
     @State private var inviteCodeToShow: String?
     @State private var inviteCodeCopied = false
+    @State private var requestedGroupID: String?
+
+    init(appState: AppState, initialGroupID: String? = nil) {
+        self.appState = appState
+        _requestedGroupID = State(initialValue: initialGroupID)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -34,6 +39,11 @@ struct ChatView: View {
         .onAppear(perform: loadGroups)
         .onReceive(NotificationCenter.default.publisher(for: .chatMessageReceived)) { notif in
             handleIncomingMessage(notif)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .selectChatGroup)) { notification in
+            guard let groupID = notification.userInfo?["groupID"] as? String else { return }
+            requestedGroupID = groupID
+            selectRequestedGroupIfAvailable()
         }
         .alert("群组邀请码", isPresented: Binding(
             get: { inviteCodeToShow != nil },
@@ -90,22 +100,46 @@ struct ChatView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(groups) { group in
-                    GroupListRow(
-                        group: group,
-                        isSelected: group.group_id == selectedGroupID,
-                        unreadCount: unreadCounts[group.group_id] ?? 0,
-                        onSelect: {
-                            selectGroup(group)
+                // SwiftUI's macOS List keeps system row separators on some OS
+                // versions even with the plain style. A simple scroll stack gives
+                // this sidebar an identical, separator-free appearance everywhere.
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        ForEach(displayedGroups) { group in
+                            GroupListRow(
+                                group: group,
+                                isSelected: group.group_id == selectedGroupID,
+                                unreadCount: appState.chatUnreadCounts[group.group_id] ?? 0,
+                                onSelect: {
+                                    selectGroup(group)
+                                }
+                            )
                         }
-                    )
-                    .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
+                    }
+                    .padding(4)
                 }
-                .listStyle(.plain)
             }
         }
         .frame(width: 170)
         .background(Color(white: 0.97))
+    }
+
+    private var displayedGroups: [GroupInfo] {
+        let unreadOrder = Dictionary(
+            uniqueKeysWithValues: appState.chatUnreadGroupOrder.enumerated().map { ($1, $0) }
+        )
+        let originalOrder = Dictionary(
+            uniqueKeysWithValues: groups.enumerated().map { ($1.group_id, $0) }
+        )
+
+        return groups.sorted { lhs, rhs in
+            let lhsUnreadIndex = unreadOrder[lhs.group_id] ?? Int.max
+            let rhsUnreadIndex = unreadOrder[rhs.group_id] ?? Int.max
+            if lhsUnreadIndex != rhsUnreadIndex {
+                return lhsUnreadIndex < rhsUnreadIndex
+            }
+            return (originalOrder[lhs.group_id] ?? 0) < (originalOrder[rhs.group_id] ?? 0)
+        }
     }
 
     // MARK: - Message Area
@@ -222,9 +256,7 @@ struct ChatView: View {
             groups = cachedGroups
             isLoadingGroups = false
             groupError = nil
-            if selectedGroupID == nil, let first = cachedGroups.first {
-                selectGroup(first)
-            }
+            selectRequestedGroupIfAvailable()
         } else {
             isLoadingGroups = true
         }
@@ -241,9 +273,7 @@ struct ChatView: View {
                         created_at: $0.created_at
                     )}
                     isLoadingGroups = false
-                    if selectedGroupID == nil, let first = groups.first {
-                        selectGroup(first)
-                    }
+                    selectRequestedGroupIfAvailable()
                 }
             } catch {
                 await MainActor.run {
@@ -256,12 +286,29 @@ struct ChatView: View {
         }
     }
 
-    private func selectGroup(_ group: GroupInfo) {
+    private func selectGroup(_ group: GroupInfo, markAsRead: Bool = true) {
         selectedGroupID = group.group_id
-        unreadCounts[group.group_id] = 0
+        if markAsRead {
+            appState.markChatGroupRead(group.group_id)
+        }
         messages = LocalCacheManager.shared.loadMessages(groupID: group.group_id)
         hasMore = false
         loadHistory()
+    }
+
+    private func selectRequestedGroupIfAvailable() {
+        if let requestedGroupID,
+           let requestedGroup = groups.first(where: { $0.group_id == requestedGroupID }) {
+            self.requestedGroupID = nil
+            selectGroup(requestedGroup)
+            return
+        }
+
+        // Initial layout selection is not a deliberate read action. This keeps
+        // unread badges visible until the user picks that conversation.
+        if selectedGroupID == nil, let first = groups.first {
+            selectGroup(first, markAsRead: false)
+        }
     }
 
     private func loadHistory(beforeID: String? = nil) {
@@ -325,10 +372,8 @@ struct ChatView: View {
 
         if groupID == selectedGroupID {
             messages = mergedMessages(messages + [message])
-        } else {
-            unreadCounts[groupID, default: 0] += 1
+            appState.markChatGroupRead(groupID)
         }
-        LocalCacheManager.shared.mergeMessages([message], groupID: groupID)
     }
 
     private func mergedMessages(_ newMessages: [ChatMessageResponse]) -> [ChatMessageResponse] {

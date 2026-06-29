@@ -71,6 +71,10 @@ enum Constants {
     static let petScreenEdgeMargin: CGFloat = 30              // 距屏幕边缘最小距离
     static let petMoveInterval: TimeInterval = 0.05           // 窗口移动刷新间隔 ~20 FPS
 
+    // MARK: - Pet Resting
+    static let petNapInterval: TimeInterval = 15 * 60         // 每 15 分钟趴下一次
+    static let petNapDuration: TimeInterval = 60              // 趴下持续 1 分钟
+
     // MARK: - Pet Flying
     static let petFlyIntervalMin: TimeInterval = 0           // 最短 5 分钟触发飞行
     static let petFlyIntervalMax: TimeInterval = 600           // 最长 10 分钟触发飞行

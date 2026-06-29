@@ -18,18 +18,18 @@ struct GroupListRow: View {
                 Spacer()
 
                 if unreadCount > 0 {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 18, height: 18)
-                        .overlay(
-                            Text("\(min(unreadCount, 99))")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white)
-                        )
+                    Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5)
+                        .frame(minWidth: 18, minHeight: 18)
+                        .background(Capsule().fill(Color.red))
                 }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isSelected ? Color.accent.opacity(0.12) : Color.clear)
