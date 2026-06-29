@@ -1,4 +1,6 @@
 import Foundation
+import Combine
+import AppKit
 
 // MARK: - Update API Types
 
@@ -26,8 +28,6 @@ enum UpdateStatus: Equatable {
     case upToDate
     case updateAvailable(version: String, notes: String, downloadURL: String, forceRequired: Bool)
     case error(String)
-    case downloading
-    case downloaded
 }
 
 // MARK: - Update Service
@@ -51,6 +51,10 @@ final class UpdateService: ObservableObject {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
     }
 
+    private var currentBuild: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
+    }
+
     var hasUpdate: Bool {
         if case .updateAvailable = status { return true }
         return false
@@ -66,26 +70,32 @@ final class UpdateService: ObservableObject {
         return nil
     }
 
-    func checkForUpdate() async {
+    /// Checks the lightweight version endpoint. The app never downloads or
+    /// installs a package itself; it only exposes the website URL to the user.
+    func checkForUpdate(silently: Bool = false) async {
         guard !isChecking else { return }
         isChecking = true
-        status = .checking
+        if !silently {
+            status = .checking
+        }
+        defer { isChecking = false }
 
         guard let url = URL(string: versionCheckURL) else {
-            status = .error("Invalid URL")
-            isChecking = false
+            if !silently { status = .error("版本检查地址无效") }
             return
         }
 
         do {
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            request.setValue(currentVersion, forHTTPHeaderField: "X-App-Version")
+            request.setValue(currentBuild, forHTTPHeaderField: "X-App-Build")
             let (data, response) = try await session.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   (200...299).contains(httpResponse.statusCode) else {
-                status = .error("Network error")
-                isChecking = false
+                if !silently { status = .error("版本服务器暂时不可用") }
                 return
             }
 
@@ -113,22 +123,28 @@ final class UpdateService: ObservableObject {
                 status = .upToDate
             }
         } catch {
-            status = .error("检查更新失败")
+            if !silently { status = .error("检查更新失败，请稍后重试") }
         }
-
-        isChecking = false
     }
 
     func openDownloadPage() {
         guard case .updateAvailable(_, _, let url, _) = status,
-              let downloadURL = URL(string: url) else { return }
+              let downloadURL = URL(string: url),
+              ["http", "https"].contains(downloadURL.scheme?.lowercased() ?? "") else { return }
         NSWorkspace.shared.open(downloadURL)
     }
 
     // MARK: - Version Comparison
 
     private func normalizeVersion(_ version: String) -> [Int] {
-        version.split(separator: ".").compactMap { Int($0) }
+        var value = version.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.first == "v" || value.first == "V" {
+            value.removeFirst()
+        }
+        value = String(value.split(whereSeparator: { $0 == "-" || $0 == "+" }).first ?? "")
+        return value.split(separator: ".").map { component in
+            Int(component.prefix(while: { $0.isNumber })) ?? 0
+        }
     }
 
     private func compareVersions(_ lhs: [Int], isLessThan rhs: [Int]) -> Bool {

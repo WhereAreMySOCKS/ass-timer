@@ -42,6 +42,9 @@ enum Constants {
     nonisolated static let wsReconnectMaxBackoff: TimeInterval = 30.0
     nonisolated static let wsPingInterval: TimeInterval = 30.0
 
+    // MARK: - App Updates
+    nonisolated static let appUpdateCheckInterval: TimeInterval = 6 * 60 * 60
+
     // MARK: - Leaderboard
     static let leaderboardRefreshInterval: TimeInterval = 30.0
     static let leaderboardMaxEntries = 20

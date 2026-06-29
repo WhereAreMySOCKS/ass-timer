@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 /// Main application delegate.
 /// Manages the floating pet window lifecycle, onboarding, and all secondary windows.
@@ -12,11 +13,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
     private var chatWindow: NSWindow?
     private var intervalWindow: NSWindow?
+    private var updateStatusCancellable: AnyCancellable?
+    private var lastPromptedUpdateVersion: String?
 
     let appState = AppState()
     private var windowManager = FloatingPetWindowManager()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        observeUpdateStatus()
+
         // Register for sleep/wake notifications
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
@@ -317,6 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if appState.currentState == .running {
             appState.activityEngine.start()
         }
+        appState.checkForUpdateAfterWake()
     }
 
     @objc private func petWindowDidMove() {
@@ -349,6 +355,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func repositionBubbleWindow() {
         guard let bubbleWindow else { return }
         bubbleWindow.setFrame(NSRect(origin: bubbleWindowOrigin(), size: Constants.bubbleOverlaySize), display: true)
+    }
+
+    // MARK: - App Updates
+
+    private func observeUpdateStatus() {
+        updateStatusCancellable = appState.updateService.$status
+            .receive(on: RunLoop.main)
+            .sink { [weak self] status in
+                guard case let .updateAvailable(version, notes, _, forceRequired) = status else {
+                    return
+                }
+                self?.showUpdatePromptIfNeeded(
+                    version: version,
+                    notes: notes,
+                    forceRequired: forceRequired
+                )
+            }
+    }
+
+    private func showUpdatePromptIfNeeded(
+        version: String,
+        notes: String,
+        forceRequired: Bool
+    ) {
+        guard lastPromptedUpdateVersion != version else { return }
+        lastPromptedUpdateVersion = version
+
+        let alert = NSAlert()
+        alert.alertStyle = forceRequired ? .critical : .informational
+        alert.messageText = "发现新版本 v\(version)"
+
+        var details = "当前版本为 v\(appState.updateService.currentVersion)。"
+        if !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            details += "\n\n\(notes)"
+        }
+        if forceRequired {
+            details += "\n\n这是一个重要更新，建议尽快下载安装。"
+        }
+        alert.informativeText = details
+        alert.addButton(withTitle: "前往下载")
+        alert.addButton(withTitle: "稍后")
+
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            appState.updateService.openDownloadPage()
+        }
     }
 
     private func bubbleWindowOrigin() -> NSPoint {

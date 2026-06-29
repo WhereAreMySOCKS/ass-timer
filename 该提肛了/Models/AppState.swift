@@ -22,6 +22,7 @@ final class AppState: ObservableObject {
     @Published var currentSpriteFrame: String?  // Current sprite keyframe (set by PetActivityEngine)
     @Published var interactionSpriteFrame: String?
     private var interactionSpriteResetTask: DispatchWorkItem?
+    private var updateCheckTimer: Timer?
 
     // MARK: - Services
 
@@ -275,13 +276,36 @@ final class AppState: ObservableObject {
             Task {
                 await updateService.checkForUpdate()
             }
+
+            scheduleAutomaticUpdateChecks()
         }
     }
 
     func onAppTerminate() {
+        updateCheckTimer?.invalidate()
+        updateCheckTimer = nil
         timerEngine.stop()
         Task {
             await wsClient?.disconnect()
+        }
+    }
+
+    func checkForUpdateAfterWake() {
+        Task {
+            await updateService.checkForUpdate(silently: true)
+        }
+    }
+
+    private func scheduleAutomaticUpdateChecks() {
+        updateCheckTimer?.invalidate()
+        let interval = Constants.appUpdateCheckInterval
+        updateCheckTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                Task {
+                    await self.updateService.checkForUpdate(silently: true)
+                }
+            }
         }
     }
 

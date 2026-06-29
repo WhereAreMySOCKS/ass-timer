@@ -87,9 +87,15 @@ final class FloatingPetWindowManager: NSObject, NSWindowDelegate {
 
 struct PetWindowContent: View {
     @ObservedObject var appState: AppState
+    @ObservedObject private var updateService: UpdateService
     @State private var showMenu = false
     @State private var pendingSingleClick: DispatchWorkItem?
     @State private var isHovering = false
+
+    init(appState: AppState) {
+        self.appState = appState
+        _updateService = ObservedObject(wrappedValue: appState.updateService)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -110,7 +116,7 @@ struct PetWindowContent: View {
                 .frame(width: Constants.petContentSize.width, height: Constants.petContentSize.height)
 
                 // Update badge (top-right corner)
-                if appState.updateService.hasUpdate {
+                if updateService.hasUpdate {
                     VStack {
                         HStack {
                             Spacer()
@@ -159,11 +165,11 @@ struct PetWindowContent: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: appState.lastError)
-        .animation(.easeInOut(duration: 0.3), value: appState.updateService.hasUpdate)
+        .animation(.easeInOut(duration: 0.3), value: updateService.hasUpdate)
         .contextMenu {
-            if appState.updateService.hasUpdate {
-                Button("发现新版本 v\(appState.updateService.latestVersion ?? "")") {
-                    appState.updateService.openDownloadPage()
+            if updateService.hasUpdate {
+                Button("发现新版本 v\(updateService.latestVersion ?? "")") {
+                    updateService.openDownloadPage()
                 }
                 Divider()
             }

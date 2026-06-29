@@ -1,51 +1,30 @@
 import AppKit
+import ImageIO
 
-/// Loads and caches sprite images from the bundle Resources/Sprites directory.
+/// Loads and caches sprite images bundled with the app.
 enum SpriteLoader {
-    /// In-memory cache of loaded sprite images, keyed by base name (e.g. "站立-1").
     private static var cache: [String: NSImage] = [:]
 
-    /// Load a sprite image by its base name (without extension).
-    /// Returns a cached instance if already loaded.
     static func loadSprite(named name: String) -> NSImage? {
-        // Return cached if available
-        if let cached = cache[name] {
+        let cacheKey = normalizedResourceName(name)
+        if let cached = cache[cacheKey] {
             return cached
         }
 
-        guard let url = spriteURL(named: name) else {
+        guard let url = spriteURL(named: name),
+              let image = downsampledImage(at: url, fitting: Constants.petSpriteSize) else {
             return nil
         }
 
-        guard let image = NSImage(contentsOf: url) else { return nil }
-
-        // Downscale to fit the pet window while preserving the source aspect ratio.
-        let targetSize = Constants.petSpriteSize
-        if image.size.width > targetSize.width || image.size.height > targetSize.height {
-            let scaled = NSImage(size: targetSize)
-            let scale = min(targetSize.width / image.size.width, targetSize.height / image.size.height)
-            let drawSize = NSSize(width: image.size.width * scale, height: image.size.height * scale)
-            let drawRect = NSRect(
-                x: (targetSize.width - drawSize.width) / 2,
-                y: (targetSize.height - drawSize.height) / 2,
-                width: drawSize.width,
-                height: drawSize.height
-            )
-            scaled.lockFocus()
-            NSColor.clear.setFill()
-            NSRect(origin: .zero, size: targetSize).fill()
-            image.draw(in: drawRect, from: .zero, operation: .copy, fraction: 1.0)
-            scaled.unlockFocus()
-            cache[name] = scaled
-            return scaled
-        }
-
-        cache[name] = image
+        cache[cacheKey] = image
         return image
     }
 
     private static func spriteURL(named name: String) -> URL? {
         let bundle = Bundle.main
+
+        // Xcode's synchronized folder currently flattens these resources into
+        // Contents/Resources. Keep the subdirectory checks for older builds.
         for ext in ["png", "PNG"] {
             if let url = bundle.url(forResource: name, withExtension: ext) {
                 return url
@@ -57,6 +36,59 @@ enum SpriteLoader {
                 return url
             }
         }
+
+        // File names can arrive with a different Unicode normalization or
+        // extension case after an app is archived/copied to another volume.
+        // Compare the actual bundled files instead of relying on an exact path.
+        guard let resourcesURL = bundle.resourceURL,
+              let enumerator = FileManager.default.enumerator(
+                at: resourcesURL,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+              ) else {
+            return nil
+        }
+
+        let expectedName = normalizedResourceName(name)
+        for case let url as URL in enumerator {
+            guard url.pathExtension.lowercased() == "png" else { continue }
+            let candidate = normalizedResourceName(url.deletingPathExtension().lastPathComponent)
+            if candidate == expectedName {
+                return url
+            }
+        }
+
         return nil
+    }
+
+    /// ImageIO decodes the PNG to its display size without using AppKit's
+    /// focus stack. Besides being much smaller in memory, this avoids blank
+    /// images observed on some machines when `NSImage.lockFocus()` is used.
+    private static func downsampledImage(at url: URL, fitting targetSize: CGSize) -> NSImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            return nil
+        }
+
+        let maxPixelSize = Int(ceil(max(targetSize.width, targetSize.height) * 2))
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+
+        let width = CGFloat(thumbnail.width)
+        let height = CGFloat(thumbnail.height)
+        let scale = min(targetSize.width / width, targetSize.height / height)
+        let displaySize = NSSize(width: width * scale, height: height * scale)
+        return NSImage(cgImage: thumbnail, size: displaySize)
+    }
+
+    private static func normalizedResourceName(_ name: String) -> String {
+        name.precomposedStringWithCanonicalMapping.lowercased()
     }
 }

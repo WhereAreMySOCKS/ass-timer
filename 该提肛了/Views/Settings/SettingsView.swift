@@ -540,9 +540,15 @@ private struct GroupSettingsTab: View {
 
 private struct AboutTab: View {
     @ObservedObject var appState: AppState
+    @ObservedObject private var updateService: UpdateService
 
     @State private var showClearConfirmation = false
     @State private var isClearingLocalData = false
+
+    init(appState: AppState) {
+        self.appState = appState
+        _updateService = ObservedObject(wrappedValue: appState.updateService)
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -553,7 +559,7 @@ private struct AboutTab: View {
                     .font(.title2)
                     .fontWeight(.semibold)
 
-                Text("v\(appState.updateService.currentVersion)")
+                Text("v\(updateService.currentVersion)")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
@@ -564,6 +570,21 @@ private struct AboutTab: View {
 
             // Update status
             updateStatusView
+
+            Button {
+                Task {
+                    await updateService.checkForUpdate()
+                }
+            } label: {
+                Label(
+                    updateService.isChecking ? "检查中…" : "检查更新",
+                    systemImage: "arrow.clockwise"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(updateService.isChecking)
 
             Divider()
 
@@ -604,8 +625,16 @@ private struct AboutTab: View {
 
     @ViewBuilder
     private var updateStatusView: some View {
-        switch appState.updateService.status {
-        case .unknown, .checking:
+        switch updateService.status {
+        case .unknown:
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle")
+                    .foregroundColor(.secondary)
+                Text("尚未检查更新")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        case .checking:
             HStack(spacing: 6) {
                 ProgressView()
                     .controlSize(.small)
@@ -639,7 +668,7 @@ private struct AboutTab: View {
                 }
 
                 Button {
-                    appState.updateService.openDownloadPage()
+                    updateService.openDownloadPage()
                 } label: {
                     Label("下载更新", systemImage: "arrow.down.circle")
                         .frame(maxWidth: .infinity)
@@ -654,35 +683,10 @@ private struct AboutTab: View {
                 }
             }
         case .error(let message):
-            VStack(spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                    Text(message)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Button("重试") {
-                    Task {
-                        await appState.updateService.checkForUpdate()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-        case .downloading:
             HStack(spacing: 6) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("下载中…")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-        case .downloaded:
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
-                Text("下载完成，请安装")
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                Text(message)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
