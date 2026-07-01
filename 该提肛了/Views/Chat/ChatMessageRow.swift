@@ -19,6 +19,7 @@ struct ChatMessageRow: View {
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
+
                 Text(message.content)
                     .font(.body)
                     .padding(.horizontal, 10)
@@ -46,14 +47,30 @@ struct ChatMessageRow: View {
     }
 
     private func formatTime(_ iso: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = formatter.date(from: iso)
-                ?? ISO8601DateFormatter().date(from: iso) else {
-            return ""
+        guard let date = parseServerDate(iso) else {
+            return iso
         }
         let display = DateFormatter()
-        display.dateFormat = "HH:mm"
+        display.locale = Locale(identifier: "zh_CN")
+        display.dateFormat = Calendar.current.isDateInToday(date) ? "HH:mm" : "MM-dd HH:mm"
         return display.string(from: date)
+    }
+
+    private func parseServerDate(_ iso: String) -> Date? {
+        let candidates = iso.hasSuffix("Z") || iso.contains("+")
+            ? [iso]
+            : [iso + "Z", iso]
+
+        for candidate in candidates {
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = fractional.date(from: candidate) {
+                return date
+            }
+            if let date = ISO8601DateFormatter().date(from: candidate) {
+                return date
+            }
+        }
+        return nil
     }
 }

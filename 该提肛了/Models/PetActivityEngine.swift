@@ -53,6 +53,7 @@ final class PetActivityEngine: ObservableObject {
     private var walkDirection: CGFloat = 1.0         // 1 = right, -1 = left
     private var walkEndTime: Date = .distantPast
     private var standToggle: Bool = false
+    private var flyCompletion: (() -> Void)?
 
     // MARK: - Keyframe Arrays (character faces right in all frames)
 
@@ -87,6 +88,7 @@ final class PetActivityEngine: ObservableObject {
         napEndTask?.cancel()
         napEndTask = nil
         napRequested = false
+        flyCompletion = nil
         isFlyingLeft = false
         phase = .standing
         activityState = .standing
@@ -98,8 +100,10 @@ final class PetActivityEngine: ObservableObject {
     // MARK: - Triggered Fly (double-click)
 
     /// Immediately trigger a parabolic flight from a double-click.
-    func triggerFlyUp() {
+    func triggerFlyUp(completion: (() -> Void)? = nil) {
         guard activityState != .flying, activityState != .napping else { return }
+
+        flyCompletion = completion
 
         flyTimer?.invalidate()
         flyTimer = nil
@@ -503,6 +507,12 @@ final class PetActivityEngine: ObservableObject {
         // Persist the landed position
         if let window = petWindow {
             PersistenceManager.shared.saveWindowPosition(x: window.frame.origin.x, y: window.frame.origin.y)
+        }
+
+        if let completion = flyCompletion {
+            flyCompletion = nil
+            completion()
+            return
         }
 
         if napRequested {

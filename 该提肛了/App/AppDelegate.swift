@@ -349,7 +349,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func handleWake() {
         appState.timerEngine.handleWake(intervalSeconds: appState.config.intervalSeconds)
-        if appState.currentState == .running {
+        if appState.currentState == .running && !appState.isObedientMode {
             appState.activityEngine.start()
         }
         appState.checkForUpdateAfterWake()

@@ -2,6 +2,11 @@ import Foundation
 import SwiftUI
 import Combine
 
+enum PetDockSide: Sendable, Equatable {
+    case left
+    case right
+}
+
 /// Central ObservableObject that owns the entire app state:
 /// - State machine transitions
 /// - Bubble queue management
@@ -21,6 +26,8 @@ final class AppState: ObservableObject {
     @Published var currentSpriteFrame: String?  // Current sprite keyframe (set by PetActivityEngine)
     @Published var interactionSpriteFrame: String?
     @Published var interactionAnimationID: UUID?
+    @Published private(set) var isLeavingObedientMode = false
+    @Published private(set) var petDockSide: PetDockSide?
     @Published private(set) var chatUnreadCounts: [String: Int] = [:]
     @Published private(set) var chatUnreadGroupOrder: [String] = []
     private(set) var activeChatGroupID: String?
@@ -53,6 +60,18 @@ final class AppState: ObservableObject {
         // Wire up activity engine
         activityEngine.appState = self
     }
+
+    var isObedientMode: Bool { config.appMode == .obedient }
+
+    var isPetDocked: Bool { petDockSide != nil }
+
+    var exerciseName: String { isObedientMode ? "放松" : "提肛" }
+
+    var reminderTitle: String { isObedientMode ? "该放松了！" : "该提肛了！" }
+
+    var reminderDetail: String { isObedientMode ? "是时候放松一下了" : "是时候做凯格尔运动了" }
+
+    var completionButtonTitle: String { isObedientMode ? "已放松" : "已提" }
 
     // MARK: - State Machine
 
@@ -119,7 +138,7 @@ final class AppState: ObservableObject {
             self.timerEngine.reset(intervalSeconds: self.config.intervalSeconds)
             self.transition(to: .running)
             // Resume pet activity
-            self.activityEngine.start()
+            self.startPetActivityIfTimerIsRunning()
         }
     }
 
@@ -133,7 +152,7 @@ final class AppState: ObservableObject {
         let shortenedInterval = max(1, config.intervalSeconds / 2)
         timerEngine.reset(intervalSeconds: shortenedInterval)
         transition(to: .running)
-        activityEngine.start()
+        startPetActivityIfTimerIsRunning()
     }
 
     // MARK: - Bubble Queue
@@ -313,12 +332,61 @@ final class AppState: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: task)
     }
 
+    // MARK: - App Mode
+
+    func toggleObedientMode() {
+        guard !isLeavingObedientMode else { return }
+
+        if isObedientMode {
+            leaveObedientModeAfterFlight()
+        } else {
+            enterObedientMode()
+        }
+    }
+
+    func setPetDockSide(_ side: PetDockSide?) {
+        guard petDockSide != side else { return }
+        petDockSide = side
+    }
+
+    private func enterObedientMode() {
+        activityEngine.stop()
+        interactionSpriteResetTask?.cancel()
+        interactionSpriteResetTask = nil
+        interactionSpriteFrame = nil
+
+        var updatedConfig = config
+        updatedConfig.appMode = .obedient
+        config = updatedConfig
+        saveConfig()
+        NotificationCenter.default.post(name: .dockPetWindowLeft, object: nil)
+    }
+
+    private func leaveObedientModeAfterFlight() {
+        isLeavingObedientMode = true
+        NotificationCenter.default.post(name: .revealPetWindow, object: nil)
+
+        activityEngine.triggerFlyUp { [weak self] in
+            guard let self else { return }
+            var updatedConfig = self.config
+            updatedConfig.appMode = .normal
+            self.config = updatedConfig
+            self.isLeavingObedientMode = false
+            self.saveConfig()
+            self.startPetActivityIfTimerIsRunning()
+        }
+    }
+
     // MARK: - Lifecycle
 
     func onAppLaunch() {
         if config.onboardingComplete {
             timerEngine.start(intervalSeconds: config.intervalSeconds)
             startPetActivityIfTimerIsRunning()
+
+            if isObedientMode {
+                NotificationCenter.default.post(name: .dockPetWindowLeft, object: nil)
+            }
 
             // Connect WebSocket if we have a user
             if let uid = config.userID {
@@ -424,6 +492,8 @@ final class AppState: ObservableObject {
         currentSpriteFrame = nil
         interactionSpriteFrame = nil
         interactionAnimationID = nil
+        isLeavingObedientMode = false
+        petDockSide = nil
         chatUnreadCounts = [:]
         chatUnreadGroupOrder = []
         activeChatGroupID = nil
@@ -445,6 +515,10 @@ final class AppState: ObservableObject {
         // Keep them in sync before PetActivityEngine checks AppState.currentState.
         guard timerEngine.state == .running else { return }
         transition(to: .running)
-        activityEngine.start()
+        if isObedientMode {
+            activityEngine.stop()
+        } else {
+            activityEngine.start()
+        }
     }
 }

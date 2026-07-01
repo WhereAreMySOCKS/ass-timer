@@ -45,9 +45,6 @@ final class CustomActionMediaStore {
     static let shared = CustomActionMediaStore()
 
     nonisolated private static let maximumFileSize = 10 * 1024 * 1024
-    nonisolated private static let outputWidth = 216
-    nonisolated private static let outputHeight = 288
-
     private let fileManager = FileManager.default
     private let mediaRoot: URL
     private var imageCache: [String: NSImage] = [:]
@@ -61,7 +58,7 @@ final class CustomActionMediaStore {
         ensureDirectoryExists()
     }
 
-    func prepareDraft(from fileURL: URL) async throws -> CustomActionMediaDraft {
+    func prepareDraft(from fileURL: URL, slot: CustomActionSlot) async throws -> CustomActionMediaDraft {
         let hasSecurityScope = fileURL.startAccessingSecurityScopedResource()
         defer {
             if hasSecurityScope {
@@ -82,8 +79,9 @@ final class CustomActionMediaStore {
         }
 
         let sourceExtension = Self.normalizedSourceExtension(fileURL.pathExtension)
+        let outputSize = slot.outputSize
         let backgroundPNG = try await Self.runDetached {
-            try Self.makeBackgroundPNG(from: sourceData)
+            try Self.makeBackgroundPNG(from: sourceData, outputSize: outputSize)
         }
         return CustomActionMediaDraft(
             sourceData: sourceData,
@@ -115,12 +113,13 @@ final class CustomActionMediaStore {
         }
     }
 
-    func generateForegroundPNG(from sourceData: Data) async throws -> Data {
+    func generateForegroundPNG(from sourceData: Data, slot: CustomActionSlot) async throws -> Data {
         guard #available(macOS 14.0, *) else {
             throw CustomActionMediaError.backgroundRemovalUnavailable
         }
+        let outputSize = slot.outputSize
         return try await Self.runDetached {
-            try Self.makeForegroundPNG(from: sourceData)
+            try Self.makeForegroundPNG(from: sourceData, outputSize: outputSize)
         }
     }
 
@@ -253,8 +252,13 @@ final class CustomActionMediaStore {
         return image
     }
 
-    private nonisolated static func makeBackgroundPNG(from data: Data) throws -> Data {
+    private nonisolated static func makeBackgroundPNG(
+        from data: Data,
+        outputSize: CGSize
+    ) throws -> Data {
         let image = try decodedImage(from: data)
+        let outputWidth = max(1, Int(outputSize.width.rounded()))
+        let outputHeight = max(1, Int(outputSize.height.rounded()))
         guard let context = makeBitmapContext(width: outputWidth, height: outputHeight) else {
             throw CustomActionMediaError.imageProcessingFailed
         }
@@ -279,7 +283,10 @@ final class CustomActionMediaStore {
     }
 
     @available(macOS 14.0, *)
-    private nonisolated static func makeForegroundPNG(from data: Data) throws -> Data {
+    private nonisolated static func makeForegroundPNG(
+        from data: Data,
+        outputSize: CGSize
+    ) throws -> Data {
         let image = try decodedImage(from: data)
         try Task.checkCancellation()
 
@@ -299,12 +306,14 @@ final class CustomActionMediaStore {
         )
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let ciContext = CIContext(options: [.cacheIntermediates: false])
+        let outputWidth = max(1, Int(outputSize.width.rounded()))
+        let outputHeight = max(1, Int(outputSize.height.rounded()))
         guard let maskedImage = ciContext.createCGImage(ciImage, from: ciImage.extent),
               let outputContext = makeBitmapContext(width: outputWidth, height: outputHeight) else {
             throw CustomActionMediaError.imageProcessingFailed
         }
 
-        let padding: CGFloat = 14
+        let padding = min(outputSize.width, outputSize.height) * 0.065
         let availableWidth = CGFloat(outputWidth) - padding * 2
         let availableHeight = CGFloat(outputHeight) - padding * 2
         let maskedWidth = CGFloat(maskedImage.width)

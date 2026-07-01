@@ -59,6 +59,8 @@ enum Constants {
     static let petContentSize: CGSize = petWindowDefaultSize
     static let petActionButtonAreaWidth: CGFloat = 60
     static let petWindowTotalWidth: CGFloat = petWindowDefaultSize.width + petActionButtonAreaWidth
+    static let petEdgeSnapThreshold: CGFloat = 32
+    static let petDockedWindowWidth: CGFloat = petContentSize.width
 
     // MARK: - Pet Activity (Stand / Walk Cycle)
     static let petStandDuration: TimeInterval = 8.0          // 站立 5 秒后开始散步

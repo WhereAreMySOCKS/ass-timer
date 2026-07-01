@@ -98,7 +98,7 @@ struct LeaderboardView: View {
             if !entries.isEmpty {
                 Divider()
                 HStack {
-                    Text("我的总提肛：\(appState.config.localEventCount)次")
+                    Text("我的总\(appState.exerciseName)：\(appState.config.localEventCount)次")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Spacer()

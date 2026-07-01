@@ -70,6 +70,7 @@ struct UserGroupsResponse: Codable {
 }
 
 struct ChatMessageResponse: Codable, Identifiable {
+    let sequence: Int?
     let message_id: String
     let group_id: String
     let user_id: String
@@ -80,6 +81,21 @@ struct ChatMessageResponse: Codable, Identifiable {
     let created_at: String
 
     var id: String { message_id }
+
+    static func chronologicalOrder(
+        _ lhs: ChatMessageResponse,
+        _ rhs: ChatMessageResponse
+    ) -> Bool {
+        if lhs.created_at != rhs.created_at {
+            return lhs.created_at < rhs.created_at
+        }
+        if let lhsSequence = lhs.sequence,
+           let rhsSequence = rhs.sequence,
+           lhsSequence != rhsSequence {
+            return lhsSequence < rhsSequence
+        }
+        return lhs.message_id < rhs.message_id
+    }
 }
 
 struct ChatHistoryResponse: Codable {

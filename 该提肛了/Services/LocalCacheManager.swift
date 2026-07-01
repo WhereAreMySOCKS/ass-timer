@@ -126,27 +126,11 @@ final class LocalCacheManager {
     }
 
     private func sortedMessages(_ messages: [ChatMessageResponse]) -> [ChatMessageResponse] {
-        messages.sorted { lhs, rhs in
-            compareTimestamps(lhs.created_at, rhs.created_at)
-        }
-    }
-
-    private func compareTimestamps(_ lhs: String, _ rhs: String) -> Bool {
-        if let lhsDate = Self.dateFormatter.date(from: lhs),
-           let rhsDate = Self.dateFormatter.date(from: rhs) {
-            return lhsDate < rhsDate
-        }
-        return lhs < rhs
+        messages.sorted(by: ChatMessageResponse.chronologicalOrder)
     }
 
     private func sha256Hex(_ string: String) -> String {
         let digest = SHA256.hash(data: Data(string.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
-
-    private static let dateFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
 }

@@ -53,11 +53,11 @@ struct ReminderBubbleView: View {
                     .background(Circle().fill(Color.coral))
                     .overlay(Circle().stroke(Color.comicInk, lineWidth: 1))
 
-                Text("该提肛了！")
+                Text(appState.reminderTitle)
                     .font(.system(size: 13, weight: .black, design: .rounded))
             }
 
-            Text("是时候做凯格尔运动了")
+            Text(appState.reminderDetail)
                 .font(.system(size: 9, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.comicInk.opacity(0.72))
 
@@ -65,7 +65,7 @@ struct ReminderBubbleView: View {
                 Button(action: {
                     appState.completeKegel()
                 }) {
-                    Text("已提")
+                    Text(appState.completionButtonTitle)
                         .font(.system(size: 9, weight: .black, design: .rounded))
                         .frame(maxWidth: .infinity)
                 }
@@ -89,6 +89,7 @@ struct ReminderBubbleView: View {
 
 /// Auto-dismissing group event bubble: "XXX 已提肛！"
 struct GroupEventBubbleView: View {
+    @ObservedObject var appState: AppState
     let item: BubbleItem
 
     var body: some View {
@@ -96,7 +97,7 @@ struct GroupEventBubbleView: View {
             avatarOrEmoji
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(item.senderNickname ?? "某人") 已提肛！")
+                Text("\(item.senderNickname ?? "某人") 已\(appState.exerciseName)！")
                     .font(.system(size: 17, weight: .black, design: .rounded))
 
                 Text(item.timestamp, style: .time)
@@ -186,7 +187,7 @@ struct BubbleOverlayView: View {
                             ))
 
                     case .groupEvent:
-                        GroupEventBubbleView(item: bubble)
+                        GroupEventBubbleView(appState: appState, item: bubble)
                             .transition(.asymmetric(
                                 insertion: .move(edge: .trailing).combined(with: .opacity),
                                 removal: .move(edge: .trailing).combined(with: .opacity)

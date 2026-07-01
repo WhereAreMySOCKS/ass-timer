@@ -1,5 +1,10 @@
 import Foundation
 
+enum AppMode: String, Codable, Sendable {
+    case normal
+    case obedient
+}
+
 /// A single joined group stored in UserConfig.
 struct JoinedGroup: Codable, Identifiable, Equatable {
     var groupID: String
@@ -14,6 +19,8 @@ enum CustomActionSlot: String, Codable, CaseIterable, Identifiable, Sendable {
     case completion
     case nap
     case interaction
+    case obedientPet
+    case docked
 
     var id: String { rawValue }
 
@@ -23,6 +30,8 @@ enum CustomActionSlot: String, Codable, CaseIterable, Identifiable, Sendable {
         case .completion: return "完成"
         case .nap: return "睡觉"
         case .interaction: return "单击互动"
+        case .obedientPet: return "听话模式宠物"
+        case .docked: return "吸附边缘"
         }
     }
 
@@ -32,6 +41,8 @@ enum CustomActionSlot: String, Codable, CaseIterable, Identifiable, Sendable {
         case .completion: return "完成提肛后"
         case .nap: return "宠物趴下时"
         case .interaction: return "单击宠物后"
+        case .obedientPet: return "听话模式开启时"
+        case .docked: return "吸附到屏幕边缘时"
         }
     }
 
@@ -41,6 +52,8 @@ enum CustomActionSlot: String, Codable, CaseIterable, Identifiable, Sendable {
         case .completion: return "checkmark.circle.fill"
         case .nap: return "moon.zzz.fill"
         case .interaction: return "hand.tap.fill"
+        case .obedientPet: return "figure.seated.seatbelt"
+        case .docked: return "rectangle.inset.filled"
         }
     }
 
@@ -50,8 +63,16 @@ enum CustomActionSlot: String, Codable, CaseIterable, Identifiable, Sendable {
         case .completion: return "得意"
         case .nap: return "趴"
         case .interaction: return "愤怒"
+        case .obedientPet: return "得意"
+        case .docked: return "后视镜"
         }
     }
+
+    var outputSize: CGSize {
+        CGSize(width: 216, height: 288)
+    }
+
+    var usesSquarePreview: Bool { false }
 }
 
 /// Files belonging to one custom action photo. Paths are relative to the app-owned media folder.
@@ -69,6 +90,8 @@ struct CustomActionMediaConfig: Codable, Equatable, Sendable {
     var completion: CustomActionMediaEntry?
     var nap: CustomActionMediaEntry?
     var interaction: CustomActionMediaEntry?
+    var obedientPet: CustomActionMediaEntry?
+    var docked: CustomActionMediaEntry?
 
     subscript(slot: CustomActionSlot) -> CustomActionMediaEntry? {
         get {
@@ -77,6 +100,8 @@ struct CustomActionMediaConfig: Codable, Equatable, Sendable {
             case .completion: return completion
             case .nap: return nap
             case .interaction: return interaction
+            case .obedientPet: return obedientPet
+            case .docked: return docked
             }
         }
         set {
@@ -85,6 +110,8 @@ struct CustomActionMediaConfig: Codable, Equatable, Sendable {
             case .completion: completion = newValue
             case .nap: nap = newValue
             case .interaction: interaction = newValue
+            case .obedientPet: obedientPet = newValue
+            case .docked: docked = newValue
             }
         }
     }
@@ -98,6 +125,7 @@ struct UserConfig: Codable {
     var petImageName: String?
     var avatarURL: String?
     var intervalSeconds: Int = 2400
+    var appMode: AppMode = .normal
     var customActionMedia = CustomActionMediaConfig()
 
     /// Multi-group support: all groups the user has joined.
@@ -120,7 +148,7 @@ struct UserConfig: Codable {
     /// Legacy keys that may exist in old saved configs.
     private enum CodingKeys: String, CodingKey {
         case userID, nickname, petEmoji, petImageName, avatarURL
-        case intervalSeconds, joinedGroups, localEventCount
+        case intervalSeconds, appMode, joinedGroups, localEventCount
         case customActionMedia
         case onboardingComplete, windowOriginX, windowOriginY
         case lastReminderTimestamp
@@ -135,6 +163,7 @@ struct UserConfig: Codable {
         petImageName: String? = nil,
         avatarURL: String? = nil,
         intervalSeconds: Int = 2400,
+        appMode: AppMode = .normal,
         customActionMedia: CustomActionMediaConfig = CustomActionMediaConfig(),
         joinedGroups: [JoinedGroup] = [],
         localEventCount: Int = 0,
@@ -149,6 +178,7 @@ struct UserConfig: Codable {
         self.petImageName = petImageName
         self.avatarURL = avatarURL
         self.intervalSeconds = intervalSeconds
+        self.appMode = appMode
         self.customActionMedia = customActionMedia
         self.joinedGroups = joinedGroups
         self.localEventCount = localEventCount
@@ -167,6 +197,7 @@ struct UserConfig: Codable {
         petImageName = try container.decodeIfPresent(String.self, forKey: .petImageName)
         avatarURL = try container.decodeIfPresent(String.self, forKey: .avatarURL)
         intervalSeconds = try container.decodeIfPresent(Int.self, forKey: .intervalSeconds) ?? 2400
+        appMode = try container.decodeIfPresent(AppMode.self, forKey: .appMode) ?? .normal
         customActionMedia = try container.decodeIfPresent(
             CustomActionMediaConfig.self,
             forKey: .customActionMedia
@@ -197,6 +228,7 @@ struct UserConfig: Codable {
         try container.encodeIfPresent(petImageName, forKey: .petImageName)
         try container.encodeIfPresent(avatarURL, forKey: .avatarURL)
         try container.encode(intervalSeconds, forKey: .intervalSeconds)
+        try container.encode(appMode, forKey: .appMode)
         try container.encode(customActionMedia, forKey: .customActionMedia)
         try container.encode(joinedGroups, forKey: .joinedGroups)
         try container.encode(localEventCount, forKey: .localEventCount)

@@ -103,7 +103,7 @@ struct CustomActionMediaSettingsView: View {
                     }
                 }
 
-                Text(slot.detail)
+                Text(detail(for: slot))
                     .font(.caption)
                     .foregroundColor(.secondary)
 
@@ -144,6 +144,13 @@ struct CustomActionMediaSettingsView: View {
         .padding(8)
         .background(Color.primary.opacity(0.035))
         .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+    }
+
+    private func detail(for slot: CustomActionSlot) -> String {
+        if slot == .completion, appState.config.appMode == .obedient {
+            return "完成放松后"
+        }
+        return slot.detail
     }
 
     private func choosePhoto(for slot: CustomActionSlot) {
@@ -219,7 +226,7 @@ private struct CustomActionMediaEditorView: View {
                     }
                 }
             }
-            .frame(width: 162, height: 216)
+            .frame(width: 162, height: request.slot.usesSquarePreview ? 162 : 216)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -335,7 +342,10 @@ private struct CustomActionMediaEditorView: View {
 
         do {
             if let importedURL = request.importedURL {
-                draft = try await appState.customActionMediaStore.prepareDraft(from: importedURL)
+                draft = try await appState.customActionMediaStore.prepareDraft(
+                    from: importedURL,
+                    slot: request.slot
+                )
             } else if let entry = appState.config.customActionMedia[request.slot] {
                 draft = try await appState.customActionMediaStore.loadDraft(entry: entry)
             } else {
@@ -377,7 +387,8 @@ private struct CustomActionMediaEditorView: View {
         processingTask = Task {
             do {
                 let foregroundPNG = try await appState.customActionMediaStore.generateForegroundPNG(
-                    from: sourceData
+                    from: sourceData,
+                    slot: request.slot
                 )
                 guard processingID == id, !Task.isCancelled, var updatedDraft = draft else { return }
                 updatedDraft.foregroundPNG = foregroundPNG

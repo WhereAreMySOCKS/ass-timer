@@ -11,7 +11,27 @@ struct PetView: View {
 
     var body: some View {
         let content = Group {
-            if let customActionSlot,
+            if appState.isObedientMode && !appState.isLeavingObedientMode,
+               let dockSide = appState.petDockSide,
+               let mirrorImage = appState.customActionImage(for: .docked)
+                    ?? SpriteLoader.loadSprite(named: "后视镜") {
+                shadowedPet {
+                    Image(nsImage: mirrorImage)
+                        .resizable()
+                        .scaledToFit()
+                        .scaleEffect(x: dockSide == .right ? -1 : 1, y: 1)
+                        .frame(width: Constants.petSpriteSize.width, height: Constants.petSpriteSize.height)
+                }
+            } else if appState.isObedientMode && !appState.isLeavingObedientMode,
+               let obedientImage = appState.customActionImage(for: .obedientPet)
+                    ?? SpriteLoader.loadSprite(named: "得意") {
+                shadowedPet {
+                    Image(nsImage: obedientImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: Constants.petSpriteSize.width, height: Constants.petSpriteSize.height)
+                }
+            } else if let customActionSlot,
                let customImage = appState.customActionImage(for: customActionSlot) {
                 shadowedPet {
                     Image(nsImage: customImage)
@@ -72,6 +92,9 @@ struct PetView: View {
 
     /// Timer states win over interaction and activity states so reminder feedback is never hidden.
     private var customActionSlot: CustomActionSlot? {
+        if appState.isLeavingObedientMode {
+            return nil
+        }
         switch appState.currentState {
         case .reminder:
             return .reminder
@@ -89,6 +112,9 @@ struct PetView: View {
     }
 
     private var spriteNameForCurrentState: String? {
+        if appState.isLeavingObedientMode {
+            return appState.currentSpriteFrame ?? "起飞"
+        }
         switch appState.currentState {
         case .reminder:
             return "停止"
@@ -109,23 +135,27 @@ struct PetView: View {
 
     @ViewBuilder
     private func applyAnimation<Content: View>(_ content: Content) -> some View {
-        switch appState.currentState {
-        case .idle:
-            content.idleAnimation()
-        case .running:
-            // No idle bob when walking or flying — window is already moving
-            let activity = appState.activityEngine.activityState
-            if activity == .walking || activity == .flying || activity == .napping {
-                content
-            } else {
-                content.idleAnimation()
-            }
-        case .reminder:
-            content.reminderPulseAnimation()
-        case .waitConfirm:
-            content.confirmationAnimation()
-        case .reset:
+        if appState.isObedientMode && appState.isPetDocked && !appState.isLeavingObedientMode {
             content
+        } else {
+            switch appState.currentState {
+            case .idle:
+                content.idleAnimation()
+            case .running:
+                // No idle bob when walking or flying — window is already moving
+                let activity = appState.activityEngine.activityState
+                if activity == .walking || activity == .flying || activity == .napping {
+                    content
+                } else {
+                    content.idleAnimation()
+                }
+            case .reminder:
+                content.reminderPulseAnimation()
+            case .waitConfirm:
+                content.confirmationAnimation()
+            case .reset:
+                content
+            }
         }
     }
 

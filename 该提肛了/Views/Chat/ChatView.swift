@@ -391,8 +391,6 @@ struct ChatView: View {
         for message in newMessages {
             byID[message.message_id] = message
         }
-        return byID.values.sorted { lhs, rhs in
-            lhs.created_at < rhs.created_at
-        }
+        return byID.values.sorted(by: ChatMessageResponse.chronologicalOrder)
     }
 }
