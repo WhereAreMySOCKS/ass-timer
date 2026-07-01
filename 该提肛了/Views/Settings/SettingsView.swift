@@ -9,7 +9,7 @@ struct SettingsView: View {
     @State private var selectedTab: SettingsTab = .timer
 
     private enum SettingsTab: Hashable {
-        case timer, group, about
+        case timer, group, media, about
     }
 
     var body: some View {
@@ -29,6 +29,12 @@ struct SettingsView: View {
                     }
                     .tag(SettingsTab.group)
 
+                CustomActionMediaSettingsView(appState: appState)
+                    .tabItem {
+                        Label("素材", systemImage: "photo.on.rectangle.angled")
+                    }
+                    .tag(SettingsTab.media)
+
                 AboutTab(appState: appState)
                     .tabItem {
                         Label("关于", systemImage: "info.circle")
@@ -37,7 +43,7 @@ struct SettingsView: View {
             }
             .font(.body)
         }
-        .frame(width: 340, height: 360)
+        .frame(width: 420, height: 440)
     }
 }
 
@@ -556,46 +562,58 @@ private struct AboutTab: View {
     }
 
     var body: some View {
-        VStack(spacing: 14) {
-            Spacer()
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 48, height: 48)
+                    .accessibilityLabel("该提肛了应用图标")
 
-            VStack(spacing: 4) {
-                Text("该提肛了")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("该提肛了")
+                        .font(.title3.weight(.semibold))
 
-                Text("v\(updateService.currentVersion)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    Text("版本 \(updateService.currentVersion)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 12) {
-                AvatarImageView(avatarURL: appState.config.avatarURL ?? "", size: 58)
+                AvatarImageView(avatarURL: appState.config.avatarURL ?? "", size: 48)
                     .id(appState.config.avatarURL)
                     .accessibilityLabel("当前头像")
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(appState.config.nickname ?? "未设置昵称")
                         .font(.headline)
                         .lineLimit(1)
 
-                    Button(action: chooseAvatar) {
-                        HStack(spacing: 6) {
-                            if isUploadingAvatar {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "photo.badge.plus")
-                            }
-                            Text(isUploadingAvatar ? "上传中…" : "更新头像")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .disabled(isUploadingAvatar || appState.config.userID == nil)
+                    Text("账户头像")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
 
                 Spacer()
+
+                Button(action: chooseAvatar) {
+                    HStack(spacing: 6) {
+                        if isUploadingAvatar {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "photo.badge.plus")
+                        }
+                        Text(isUploadingAvatar ? "上传中…" : "更换头像")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(isUploadingAvatar || appState.config.userID == nil)
             }
             .padding(12)
             .background(Color.primary.opacity(0.04))
@@ -612,24 +630,30 @@ private struct AboutTab: View {
                 .foregroundColor(avatarUploadFailed ? .red : .green)
             }
 
-            updateStatusView
+            VStack(alignment: .leading, spacing: 10) {
+                updateStatusView
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button {
-                Task {
-                    await updateService.checkForUpdate()
+                Button {
+                    Task {
+                        await updateService.checkForUpdate()
+                    }
+                } label: {
+                    Label(
+                        updateService.isChecking ? "检查中…" : "检查更新",
+                        systemImage: "arrow.clockwise"
+                    )
+                    .frame(maxWidth: .infinity)
                 }
-            } label: {
-                Label(
-                    updateService.isChecking ? "检查中…" : "检查更新",
-                    systemImage: "arrow.clockwise"
-                )
-                .frame(maxWidth: .infinity)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(updateService.isChecking)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(updateService.isChecking)
+            .padding(12)
+            .background(Color.primary.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-            Divider()
+            Spacer(minLength: 0)
 
             Button(role: .destructive) {
                 showClearConfirmation = true
@@ -640,8 +664,6 @@ private struct AboutTab: View {
             .buttonStyle(.bordered)
             .tint(.red)
             .disabled(isClearingLocalData)
-
-            Spacer()
         }
         .padding(16)
         .alert("清除本地数据？", isPresented: $showClearConfirmation) {
@@ -654,7 +676,7 @@ private struct AboutTab: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("会删除当前后端用户，并清除昵称、群组、提醒进度、计数、聊天记录、头像缓存和初始化状态。")
+            Text("会删除当前后端用户，并清除昵称、群组、提醒进度、计数、聊天记录、自定义素材、头像缓存和初始化状态。")
         }
     }
 

@@ -11,7 +11,16 @@ struct PetView: View {
 
     var body: some View {
         let content = Group {
-            if let spriteName = spriteNameForCurrentState,
+            if let customActionSlot,
+               let customImage = appState.customActionImage(for: customActionSlot) {
+                shadowedPet {
+                    Image(nsImage: customImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: Constants.petSpriteSize.width, height: Constants.petSpriteSize.height)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            } else if let spriteName = spriteNameForCurrentState,
                let spriteImage = SpriteLoader.loadSprite(named: spriteName) {
                 shadowedPet {
                     Image(nsImage: spriteImage)
@@ -59,6 +68,24 @@ struct PetView: View {
                 clickResetTask?.cancel()
                 clickResetTask = nil
             }
+    }
+
+    /// Timer states win over interaction and activity states so reminder feedback is never hidden.
+    private var customActionSlot: CustomActionSlot? {
+        switch appState.currentState {
+        case .reminder:
+            return .reminder
+        case .waitConfirm:
+            return .completion
+        default:
+            if appState.interactionSpriteFrame == "愤怒" {
+                return .interaction
+            }
+            if appState.activityEngine.activityState == .napping {
+                return .nap
+            }
+            return nil
+        }
     }
 
     private var spriteNameForCurrentState: String? {

@@ -34,6 +34,7 @@ final class AppState: ObservableObject {
     let apiClient = APIClient(baseURL: Constants.apiBaseURL)
     let activityEngine = PetActivityEngine()
     let updateService = UpdateService(baseURL: Constants.apiBaseURL)
+    let customActionMediaStore = CustomActionMediaStore.shared
     var wsClient: WebSocketClient?
 
     // MARK: - Init
@@ -369,6 +370,33 @@ final class AppState: ObservableObject {
         PersistenceManager.shared.saveConfig(config)
     }
 
+    func customActionImage(for slot: CustomActionSlot) -> NSImage? {
+        guard let entry = config.customActionMedia[slot] else { return nil }
+        return customActionMediaStore.image(for: entry)
+    }
+
+    func saveCustomActionMedia(_ draft: CustomActionMediaDraft, for slot: CustomActionSlot) async throws {
+        let oldEntry = config.customActionMedia[slot]
+        let entry = try await customActionMediaStore.save(
+            draft: draft,
+            slot: slot,
+            replacing: oldEntry
+        )
+        var updatedConfig = config
+        updatedConfig.customActionMedia[slot] = entry
+        config = updatedConfig
+        saveConfig()
+    }
+
+    func removeCustomActionMedia(for slot: CustomActionSlot) {
+        guard let entry = config.customActionMedia[slot] else { return }
+        customActionMediaStore.remove(entry: entry)
+        var updatedConfig = config
+        updatedConfig.customActionMedia[slot] = nil
+        config = updatedConfig
+        saveConfig()
+    }
+
     func clearLocalData() async {
         let existingUserID = config.userID
         timerEngine.stop()
@@ -386,6 +414,7 @@ final class AppState: ObservableObject {
 
         PersistenceManager.shared.clearAllLocalData()
         LocalCacheManager.shared.clearAllCaches()
+        customActionMediaStore.clearAll()
 
         config = UserConfig()
         currentState = .idle

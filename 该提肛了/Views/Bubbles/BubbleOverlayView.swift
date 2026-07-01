@@ -61,32 +61,26 @@ struct ReminderBubbleView: View {
                 .font(.system(size: 9, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.comicInk.opacity(0.72))
 
-            Button(action: {
-                appState.completeKegel()
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("我已提肛")
+            HStack(spacing: 6) {
+                Button(action: {
+                    appState.completeKegel()
+                }) {
+                    Text("已提")
                         .font(.system(size: 9, weight: .black, design: .rounded))
+                        .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(ComicActionButtonStyle())
+                .buttonStyle(ComicActionButtonStyle())
 
-            Button(action: {
-                appState.skipKegel()
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("先不提了")
+                Button(action: {
+                    appState.skipKegel()
+                }) {
+                    Text("等会")
                         .font(.system(size: 9, weight: .black, design: .rounded))
+                        .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
+                .buttonStyle(ComicSecondaryActionButtonStyle())
+                .help("跳过本次，下次在当前间隔的一半时间后提醒")
             }
-            .buttonStyle(ComicSecondaryActionButtonStyle())
-            .help("跳过本次，下次在当前间隔的一半时间后提醒")
         }
         .frame(width: 150)
         .bubbleStyle()
