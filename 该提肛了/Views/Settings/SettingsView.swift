@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 /// Unified settings panel with tabbed interface.
 struct SettingsView: View {
@@ -544,6 +546,9 @@ private struct AboutTab: View {
 
     @State private var showClearConfirmation = false
     @State private var isClearingLocalData = false
+    @State private var isUploadingAvatar = false
+    @State private var avatarStatusMessage: String?
+    @State private var avatarUploadFailed = false
 
     init(appState: AppState) {
         self.appState = appState
@@ -551,10 +556,10 @@ private struct AboutTab: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             Spacer()
 
-            VStack(spacing: 8) {
+            VStack(spacing: 4) {
                 Text("该提肛了")
                     .font(.title2)
                     .fontWeight(.semibold)
@@ -562,13 +567,51 @@ private struct AboutTab: View {
                 Text("v\(updateService.currentVersion)")
                     .font(.caption)
                     .foregroundColor(.secondary)
-
-                Text("定时提醒，健康提肛")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
             }
 
-            // Update status
+            HStack(spacing: 12) {
+                AvatarImageView(avatarURL: appState.config.avatarURL ?? "", size: 58)
+                    .id(appState.config.avatarURL)
+                    .accessibilityLabel("当前头像")
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(appState.config.nickname ?? "未设置昵称")
+                        .font(.headline)
+                        .lineLimit(1)
+
+                    Button(action: chooseAvatar) {
+                        HStack(spacing: 6) {
+                            if isUploadingAvatar {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "photo.badge.plus")
+                            }
+                            Text(isUploadingAvatar ? "上传中…" : "更新头像")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(isUploadingAvatar || appState.config.userID == nil)
+                }
+
+                Spacer()
+            }
+            .padding(12)
+            .background(Color.primary.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            if let avatarStatusMessage {
+                Label(
+                    avatarStatusMessage,
+                    systemImage: avatarUploadFailed
+                        ? "exclamationmark.triangle.fill"
+                        : "checkmark.circle.fill"
+                )
+                .font(.caption)
+                .foregroundColor(avatarUploadFailed ? .red : .green)
+            }
+
             updateStatusView
 
             Button {
@@ -585,14 +628,6 @@ private struct AboutTab: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(updateService.isChecking)
-
-            Divider()
-
-            VStack(spacing: 8) {
-                aboutRow(icon: "timer", title: "定时提醒", description: "自定义提醒间隔")
-                aboutRow(icon: "person.3.fill", title: "群组功能", description: "和好友一起坚持")
-                aboutRow(icon: "chart.bar.fill", title: "排行榜", description: "激励彼此进步")
-            }
 
             Divider()
 
@@ -620,6 +655,62 @@ private struct AboutTab: View {
             Button("取消", role: .cancel) {}
         } message: {
             Text("会删除当前后端用户，并清除昵称、群组、提醒进度、计数、聊天记录、头像缓存和初始化状态。")
+        }
+    }
+
+    private func chooseAvatar() {
+        guard !isUploadingAvatar, appState.config.userID != nil else { return }
+
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.png, .jpeg, .gif, .webP]
+        panel.message = "选择新头像"
+        panel.prompt = "上传"
+
+        let completion: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task {
+                await uploadAvatar(url)
+            }
+        }
+
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            panel.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            completion(panel.runModal())
+        }
+    }
+
+    private func uploadAvatar(_ fileURL: URL) async {
+        guard let userID = appState.config.userID else { return }
+
+        isUploadingAvatar = true
+        avatarStatusMessage = nil
+        avatarUploadFailed = false
+        defer { isUploadingAvatar = false }
+
+        do {
+            let response = try await appState.apiClient.updateUser(
+                userID: userID,
+                nickname: nil,
+                avatarURL: fileURL
+            )
+            appState.config.nickname = response.nickname
+            appState.config.petEmoji = response.pet_emoji
+            appState.config.avatarURL = response.avatar_url
+            appState.saveConfig()
+            avatarStatusMessage = "头像已更新"
+        } catch APIError.invalidFile(let message) {
+            avatarUploadFailed = true
+            avatarStatusMessage = message
+        } catch APIError.serverError(let code, _) where code == 422 {
+            avatarUploadFailed = true
+            avatarStatusMessage = "请选择 10MB 以内的 PNG、JPG、GIF 或 WebP 图片"
+        } catch {
+            avatarUploadFailed = true
+            avatarStatusMessage = "头像上传失败，请稍后重试"
         }
     }
 
@@ -693,21 +784,4 @@ private struct AboutTab: View {
         }
     }
 
-    private func aboutRow(icon: String, title: String, description: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.body)
-                .foregroundColor(.accentColor)
-                .frame(width: 20)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                Text(description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            Spacer()
-        }
-    }
 }

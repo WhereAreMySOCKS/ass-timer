@@ -23,6 +23,8 @@ final class AppState: ObservableObject {
     @Published var interactionAnimationID: UUID?
     @Published private(set) var chatUnreadCounts: [String: Int] = [:]
     @Published private(set) var chatUnreadGroupOrder: [String] = []
+    private(set) var activeChatGroupID: String?
+    private(set) var isChatWindowActive = false
     private var interactionSpriteResetTask: DispatchWorkItem?
     private var updateCheckTimer: Timer?
 
@@ -118,6 +120,19 @@ final class AppState: ObservableObject {
             // Resume pet activity
             self.activityEngine.start()
         }
+    }
+
+    /// Skip the current reminder without logging a completion. The next
+    /// reminder is intentionally sooner, while the configured interval stays
+    /// unchanged for subsequent cycles.
+    func skipKegel() {
+        guard currentState == .reminder else { return }
+
+        removeBubble(kind: .reminder)
+        let shortenedInterval = max(1, config.intervalSeconds / 2)
+        timerEngine.reset(intervalSeconds: shortenedInterval)
+        transition(to: .running)
+        activityEngine.start()
     }
 
     // MARK: - Bubble Queue
@@ -237,9 +252,12 @@ final class AppState: ObservableObject {
 
         // Don't show a bubble for the user's own messages
         if message.user_id != config.userID {
-            chatUnreadCounts[groupID, default: 0] += 1
-            chatUnreadGroupOrder.removeAll { $0 == groupID }
-            chatUnreadGroupOrder.insert(groupID, at: 0)
+            let isBeingRead = isChatWindowActive && activeChatGroupID == groupID
+            if !isBeingRead {
+                chatUnreadCounts[groupID, default: 0] += 1
+                chatUnreadGroupOrder.removeAll { $0 == groupID }
+                chatUnreadGroupOrder.insert(groupID, at: 0)
+            }
 
             addBubble(
                 .chatMessage,
@@ -265,6 +283,14 @@ final class AppState: ObservableObject {
     func markChatGroupRead(_ groupID: String) {
         chatUnreadCounts[groupID] = nil
         chatUnreadGroupOrder.removeAll { $0 == groupID }
+    }
+
+    func setActiveChatGroup(_ groupID: String?) {
+        activeChatGroupID = groupID
+    }
+
+    func setChatWindowActive(_ isActive: Bool) {
+        isChatWindowActive = isActive
     }
 
     func clearError(after seconds: TimeInterval = 3) {
@@ -371,6 +397,8 @@ final class AppState: ObservableObject {
         interactionAnimationID = nil
         chatUnreadCounts = [:]
         chatUnreadGroupOrder = []
+        activeChatGroupID = nil
+        isChatWindowActive = false
         interactionSpriteResetTask?.cancel()
         interactionSpriteResetTask = nil
         isLeaderboardVisible = false

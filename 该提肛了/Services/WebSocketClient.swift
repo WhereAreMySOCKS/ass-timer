@@ -15,34 +15,43 @@ actor WebSocketClient {
     }
 
     func connect(userID: String) {
+        if self.userID == userID,
+           let task,
+           task.closeCode == .invalid {
+            return
+        }
+
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
         self.userID = userID
         self.shouldReconnect = true
+        self.retryCount = 0
         establishConnection()
     }
 
     private func establishConnection() {
-        guard let uid = userID else { return }
+        guard task == nil, let uid = userID else { return }
         guard let url = URL(string: "\(Constants.wsBaseURL)/ws/\(uid)") else { return }
 
         let session = URLSession(configuration: .default)
-        task = session.webSocketTask(with: url)
-        task?.resume()
-        retryCount = 0
+        let newTask = session.webSocketTask(with: url)
+        task = newTask
+        newTask.resume()
         isConnected = true
 
         // Start ping loop and receive loop
-        startPingLoop()
+        startPingLoop(for: newTask)
         Task {
-            await receiveLoop()
+            await receiveLoop(for: newTask)
         }
     }
 
-    private func receiveLoop() async {
-        guard let task else { return }
-
+    private func receiveLoop(for receivingTask: URLSessionWebSocketTask) async {
         do {
-            while shouldReconnect && task.closeCode == .invalid {
-                let message = try await task.receive()
+            while shouldReconnect && receivingTask.closeCode == .invalid {
+                let message = try await receivingTask.receive()
+                guard task === receivingTask else { return }
+                retryCount = 0
                 switch message {
                 case .string(let text):
                     await handleMessage(text)
@@ -54,8 +63,9 @@ actor WebSocketClient {
                     break
                 }
             }
+            await handleDisconnection(of: receivingTask)
         } catch {
-            await handleDisconnection()
+            await handleDisconnection(of: receivingTask)
         }
     }
 
@@ -101,28 +111,30 @@ actor WebSocketClient {
         }
     }
 
-    private func handleDisconnection() async {
+    private func handleDisconnection(of disconnectedTask: URLSessionWebSocketTask) async {
+        guard task === disconnectedTask else { return }
+        task = nil
         isConnected = false
 
-        guard shouldReconnect && retryCount < Constants.wsReconnectMaxRetries else {
-            return
-        }
+        guard shouldReconnect else { return }
 
         let backoff = min(
             pow(2.0, Double(retryCount)),
             Constants.wsReconnectMaxBackoff
         )
-        retryCount += 1
+        retryCount = min(retryCount + 1, Constants.wsReconnectMaxRetries)
 
         try? await Task.sleep(for: .seconds(backoff))
+        guard shouldReconnect, task == nil else { return }
         establishConnection()
     }
 
-    private func startPingLoop() {
+    private func startPingLoop(for pingedTask: URLSessionWebSocketTask) {
         Task {
             while shouldReconnect && !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(Constants.wsPingInterval))
-                task?.sendPing { _ in }
+                guard shouldReconnect, task === pingedTask else { return }
+                pingedTask.sendPing { _ in }
             }
         }
     }
@@ -131,6 +143,8 @@ actor WebSocketClient {
         shouldReconnect = false
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
+        userID = nil
+        retryCount = 0
         isConnected = false
     }
 }

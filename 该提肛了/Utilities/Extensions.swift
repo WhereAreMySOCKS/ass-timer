@@ -194,6 +194,26 @@ struct ComicActionButtonStyle: ButtonStyle {
     }
 }
 
+/// Secondary action inside comic speech bubbles.
+struct ComicSecondaryActionButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.vertical, 8)
+            .padding(.horizontal, 14)
+            .foregroundStyle(Color.comicInk.opacity(0.78))
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.comicBubblePaper)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.comicInk.opacity(0.65), lineWidth: 1.8)
+                    )
+            )
+            .opacity(configuration.isPressed ? 0.68 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
 // MARK: - String Helpers
 
 extension String {
@@ -216,6 +236,7 @@ extension String {
 
 extension String {
     var apiAssetURL: URL? {
+        guard !sanitized.isEmpty else { return nil }
         if hasPrefix("http://") || hasPrefix("https://") {
             return URL(string: self)
         }

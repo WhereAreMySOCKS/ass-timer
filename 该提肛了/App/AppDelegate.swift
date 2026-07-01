@@ -4,7 +4,7 @@ import Combine
 
 /// Main application delegate.
 /// Manages the floating pet window lifecycle, onboarding, and all secondary windows.
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var petWindow: NSWindow?
     private var bubbleWindow: NSWindow?
     private var onboardingWindow: NSWindow?
@@ -229,6 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func showChat(groupID: String? = nil) {
         if let existing = chatWindow, existing.isVisible {
             existing.makeKeyAndOrderFront(nil)
+            appState.setChatWindowActive(true)
             if let groupID {
                 NotificationCenter.default.post(
                     name: .selectChatGroup,
@@ -253,9 +254,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.contentView = hostingView
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.makeKeyAndOrderFront(nil)
+        appState.setChatWindowActive(true)
 
         self.chatWindow = window
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === chatWindow else { return }
+        appState.setChatWindowActive(true)
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === chatWindow else { return }
+        appState.setChatWindowActive(false)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === chatWindow else { return }
+        appState.setChatWindowActive(false)
+        appState.setActiveChatGroup(nil)
+        chatWindow = nil
     }
 
     // MARK: - Settings

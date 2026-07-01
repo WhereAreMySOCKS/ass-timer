@@ -39,7 +39,7 @@ final class PassthroughWindow: NSWindow {
     }
 }
 
-/// Non-dismissable reminder bubble with the "我已提肛" action button.
+/// Non-dismissable reminder bubble with completion and skip actions.
 struct ReminderBubbleView: View {
     @ObservedObject var appState: AppState
 
@@ -73,8 +73,22 @@ struct ReminderBubbleView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(ComicActionButtonStyle())
+
+            Button(action: {
+                appState.skipKegel()
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("先不提了")
+                        .font(.system(size: 9, weight: .black, design: .rounded))
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(ComicSecondaryActionButtonStyle())
+            .help("跳过本次，下次在当前间隔的一半时间后提醒")
         }
-        .frame(width: 140)
+        .frame(width: 150)
         .bubbleStyle()
     }
 }

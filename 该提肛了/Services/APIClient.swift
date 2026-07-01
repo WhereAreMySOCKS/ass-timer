@@ -185,7 +185,8 @@ actor APIClient {
                 "/user/\(userID)",
                 fields: fields,
                 fileField: "avatar",
-                fileURL: avatarURL
+                fileURL: avatarURL,
+                httpMethod: "PATCH"
             )
         } else if let nickname {
             return try await postForm("/user/\(userID)", fields: ["nickname": nickname])
@@ -283,7 +284,8 @@ actor APIClient {
         _ path: String,
         fields: [String: String],
         fileField: String,
-        fileURL: URL
+        fileURL: URL,
+        httpMethod: String = "POST"
     ) async throws -> T {
         guard let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.networkError("Invalid URL")
@@ -326,7 +328,7 @@ actor APIClient {
         body.append("--\(boundary)--\r\n")
 
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        request.httpMethod = httpMethod
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
 

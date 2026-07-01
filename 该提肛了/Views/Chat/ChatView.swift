@@ -37,6 +37,9 @@ struct ChatView: View {
         }
         .frame(minWidth: 560, minHeight: 380)
         .onAppear(perform: loadGroups)
+        .onDisappear {
+            appState.setActiveChatGroup(nil)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .chatMessageReceived)) { notif in
             handleIncomingMessage(notif)
         }
@@ -288,12 +291,13 @@ struct ChatView: View {
 
     private func selectGroup(_ group: GroupInfo, markAsRead: Bool = true) {
         selectedGroupID = group.group_id
+        appState.setActiveChatGroup(group.group_id)
         if markAsRead {
             appState.markChatGroupRead(group.group_id)
         }
         messages = LocalCacheManager.shared.loadMessages(groupID: group.group_id)
         hasMore = false
-        loadHistory()
+        loadHistory(groupID: group.group_id)
     }
 
     private func selectRequestedGroupIfAvailable() {
@@ -311,35 +315,40 @@ struct ChatView: View {
         }
     }
 
-    private func loadHistory(beforeID: String? = nil) {
-        guard let gid = selectedGroupID else { return }
+    private func loadHistory(groupID: String, beforeID: String? = nil) {
         isLoadingHistory = true
         Task {
             do {
                 let resp = try await appState.apiClient.getChatHistory(
-                    groupID: gid, limit: 50, beforeID: beforeID
+                    groupID: groupID, limit: 50, beforeID: beforeID
                 )
                 await MainActor.run {
+                    guard selectedGroupID == groupID else {
+                        LocalCacheManager.shared.mergeMessages(resp.messages, groupID: groupID)
+                        return
+                    }
                     if beforeID == nil {
                         messages = mergedMessages(messages + resp.messages)
                     } else {
                         messages = mergedMessages(resp.messages + messages)
                     }
-                    LocalCacheManager.shared.saveMessages(messages, groupID: gid)
+                    LocalCacheManager.shared.saveMessages(messages, groupID: groupID)
                     hasMore = resp.has_more
                     isLoadingHistory = false
                 }
             } catch {
                 await MainActor.run {
-                    isLoadingHistory = false
+                    if selectedGroupID == groupID {
+                        isLoadingHistory = false
+                    }
                 }
             }
         }
     }
 
     private func loadMoreHistory() {
-        guard let oldest = messages.first else { return }
-        loadHistory(beforeID: oldest.message_id)
+        guard let groupID = selectedGroupID, let oldest = messages.first else { return }
+        loadHistory(groupID: groupID, beforeID: oldest.message_id)
     }
 
     private func sendMessage() {
@@ -353,8 +362,10 @@ struct ChatView: View {
                     groupID: gid, userID: uid, content: trimmed
                 )
                 await MainActor.run {
-                    messages = mergedMessages(messages + [msg])
-                    LocalCacheManager.shared.saveMessages(messages, groupID: gid)
+                    let cachedMessages = LocalCacheManager.shared.mergeMessages([msg], groupID: gid)
+                    if selectedGroupID == gid {
+                        messages = cachedMessages
+                    }
                 }
             } catch {
                 // Re-show the text on failure
@@ -372,7 +383,6 @@ struct ChatView: View {
 
         if groupID == selectedGroupID {
             messages = mergedMessages(messages + [message])
-            appState.markChatGroupRead(groupID)
         }
     }
 

@@ -6,6 +6,10 @@ struct PetActionButtons: View {
     @ObservedObject var appState: AppState
     @Binding var isVisible: Bool
 
+    private var totalUnreadMessages: Int {
+        appState.chatUnreadCounts.values.reduce(0, +)
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             ActionButton(
@@ -16,6 +20,7 @@ struct PetActionButtons: View {
             ActionButton(
                 systemName: "message",
                 label: "发言",
+                badgeCount: totalUnreadMessages,
                 action: { NotificationCenter.default.post(name: .showChat, object: nil) }
             )
             ActionButton(
@@ -47,17 +52,32 @@ struct PetActionButtons: View {
 struct ActionButton: View {
     let systemName: String
     let label: String
+    var badgeCount: Int = 0
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 16, weight: .medium))
-                .frame(width: 28, height: 28)
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: systemName)
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 28, height: 28)
+
+                if badgeCount > 0 {
+                    Text(badgeCount > 99 ? "99+" : "\(badgeCount)")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 3)
+                        .frame(minWidth: 13, minHeight: 13)
+                        .background(Capsule().fill(Color.red))
+                        .offset(x: 5, y: -4)
+                }
+            }
         }
         .buttonStyle(.plain)
         .foregroundColor(.primary)
-        .accessibilityLabel(label)
+        .accessibilityLabel(
+            badgeCount > 0 ? "\(label)，\(badgeCount)条未读消息" : label
+        )
         .help(label)
     }
 }
