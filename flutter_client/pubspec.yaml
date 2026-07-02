@@ -1,0 +1,42 @@
+name: ass_timer_flutter
+description: Cross-platform Ass-Timer desktop pet for macOS and Windows.
+publish_to: none
+version: 2.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  collection: ^1.19.0
+  crypto: ^3.0.6
+  desktop_multi_window: ^0.3.0
+  dio: ^5.8.0+1
+  file_selector: ^1.0.3
+  flutter_riverpod: ^2.6.1
+  image: ^4.5.4
+  package_info_plus: ^8.3.1
+  path: ^1.9.1
+  path_provider: ^2.1.5
+  screen_retriever: ^0.2.0
+  shared_preferences: ^2.5.3
+  tray_manager: ^0.5.2
+  url_launcher: ^6.3.2
+  uuid: ^4.5.1
+  web_socket_channel: ^3.0.2
+  window_manager: ^0.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/pets/
+    - assets/sprites/
+    - assets/tray/

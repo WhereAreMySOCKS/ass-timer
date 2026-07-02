@@ -1,0 +1,65 @@
+name: Flutter desktop
+
+on:
+  pull_request:
+    paths:
+      - "flutter_client/**"
+      - ".github/workflows/flutter-desktop.yml"
+  push:
+    branches: [main]
+    paths:
+      - "flutter_client/**"
+      - ".github/workflows/flutter-desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64 DMG
+            os: macos-14
+            artifact: macos-release
+            path: flutter_client/releases/Ass-Timer.dmg*
+          - name: Windows x64 ZIP
+            os: windows-latest
+            artifact: windows-release
+            path: flutter_client/releases/Ass-Timer-Windows-x64.zip*
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: flutter_client
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.4"
+          channel: stable
+          cache: true
+
+      - name: Install CocoaPods
+        if: runner.os == 'macOS'
+        run: brew install cocoapods
+
+      - name: Build macOS package
+        if: runner.os == 'macOS'
+        run: ./tool/build_macos_release.sh
+
+      - name: Build Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\tool\build_windows_release.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+          if-no-files-found: error
+
