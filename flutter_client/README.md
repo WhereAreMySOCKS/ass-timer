@@ -40,3 +40,16 @@ Windows x64 portable ZIP (run from PowerShell on Windows 10/11):
 Both scripts run dependency resolution, static analysis and tests before
 packaging. The applications only open the platform-specific browser download;
 they never install updates in-app.
+
+### Windows diagnostics
+
+The portable ZIP includes the VC143 x64 runtime DLLs and validates its Flutter
+assets, bundled Noto Sans SC font, and license before packaging. On Windows,
+diagnostic files are written to:
+
+- `%LOCALAPPDATA%\AssTimer\logs` for Dart and Flutter errors.
+- `%LOCALAPPDATA%\AssTimer\crashes` for native Windows minidumps.
+
+The log directory is also available from **Settings → About → Open logs
+folder**. Keep every DLL and the `data` directory beside `Ass-Timer.exe`; if the
+tray cannot initialize, the app falls back to a visible taskbar entry.

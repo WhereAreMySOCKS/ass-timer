@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:ass_timer_flutter/application/app_controller.dart';
+import 'package:ass_timer_flutter/core/diagnostics/crash_reporter.dart';
 import 'package:ass_timer_flutter/core/theme/app_theme.dart';
 import 'package:ass_timer_flutter/core/window/desktop_host.dart';
 import 'package:ass_timer_flutter/core/window/window_protocol.dart';
@@ -10,17 +12,47 @@ import 'package:ass_timer_flutter/features/control_center/control_center_view.da
 import 'package:ass_timer_flutter/features/onboarding/onboarding_view.dart';
 import 'package:ass_timer_flutter/features/pet/pet_window_view.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  final launch = await DesktopHost.instance.initializeCurrentWindow();
-  runApp(
-    ProviderScope(
-      overrides: [
-        launchArgumentsProvider.overrideWithValue(launch),
-      ],
-      child: AssTimerApp(launch: launch),
+  await CrashReporter.instance.initialize();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    CrashReporter.instance.recordSync(
+      details.exception,
+      details.stack ?? StackTrace.current,
+      context: details.context?.toDescription() ?? 'flutter_error',
+      fatal: true,
+    );
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    CrashReporter.instance.recordSync(
+      error,
+      stack,
+      context: 'platform_dispatcher',
+      fatal: true,
+    );
+    return true;
+  };
+  await runZonedGuarded<Future<void>>(
+    () async {
+      final startup = await DesktopHost.instance.initializeCurrentWindow();
+      runApp(
+        ProviderScope(
+          overrides: [
+            launchArgumentsProvider.overrideWithValue(startup.launchArguments),
+          ],
+          child: AssTimerApp(launch: startup.launchArguments),
+        ),
+      );
+    },
+    (error, stack) => CrashReporter.instance.recordSync(
+      error,
+      stack,
+      context: 'root_zone',
+      fatal: true,
     ),
   );
 }
@@ -35,6 +67,19 @@ class AssTimerApp extends StatelessWidget {
         title: '该提肛了',
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(),
+        locale: const Locale.fromSubtags(
+          languageCode: 'zh',
+          scriptCode: 'Hans',
+          countryCode: 'CN',
+        ),
+        supportedLocales: const <Locale>[
+          Locale.fromSubtags(
+            languageCode: 'zh',
+            scriptCode: 'Hans',
+            countryCode: 'CN',
+          ),
+        ],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: switch (launch.role) {
           WindowRole.pet => const _RootWindow(),
           WindowRole.bubble => const BubbleWindowView(),

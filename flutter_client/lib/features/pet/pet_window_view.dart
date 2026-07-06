@@ -178,7 +178,7 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 11,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),

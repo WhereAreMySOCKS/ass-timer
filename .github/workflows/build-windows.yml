@@ -1,0 +1,87 @@
+name: Build Windows (Flutter Client)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "flutter_client/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "flutter_client/**"
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: flutter_client
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable Windows support
+        run: flutter config --enable-windows-desktop
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Package release zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $releaseDir = "releases"
+          $buildDir = "build\windows\x64\runner\Release"
+          $zipPath = "$releaseDir\Ass-Timer-Windows-x64.zip"
+          $runtimeNames = @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")
+
+          # Find VC runtime
+          $runtimeDirectory = $null
+          if ($env:VCToolsRedistDir) {
+            $candidate = Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT"
+            if (Test-Path $candidate) { $runtimeDirectory = $candidate }
+          }
+          if (-not $runtimeDirectory) {
+            $vsRoot = Join-Path ${env:ProgramFiles} "Microsoft Visual Studio\2022"
+            if (Test-Path $vsRoot) {
+              $runtimeDirectory = Get-ChildItem $vsRoot -Directory -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -like "*VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" } |
+                Sort-Object FullName -Descending |
+                Select-Object -ExpandProperty FullName -First 1
+            }
+          }
+          if ($runtimeDirectory) {
+            foreach ($runtime in $runtimeNames) {
+              $dest = Join-Path $buildDir $runtime
+              if (-not (Test-Path $dest)) {
+                Copy-Item (Join-Path $runtimeDirectory $runtime) $dest
+              }
+            }
+          }
+
+          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+          if (Test-Path $zipPath) { Remove-Item $zipPath }
+          Compress-Archive -Path (Join-Path $buildDir "*") -DestinationPath $zipPath
+          Write-Host "Packaged: $zipPath"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ass-Timer-Windows-x64
+          path: 该提肛了/flutter_client/releases/Ass-Timer-Windows-x64.zip

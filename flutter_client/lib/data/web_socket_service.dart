@@ -34,15 +34,60 @@ class ChatServerEvent extends ServerEvent {
   final ChatMessage message;
 }
 
+ServerEvent? decodeServerEvent(String raw) {
+  final dynamic decoded;
+  try {
+    decoded = jsonDecode(raw);
+  } on FormatException {
+    throw const FormatException('WebSocket 消息不是有效 JSON');
+  }
+  if (decoded is! Map<String, dynamic>) {
+    throw const FormatException('WebSocket 消息必须是对象');
+  }
+  final type = decoded['type'];
+  if (type is! String) {
+    throw const FormatException('WebSocket 消息缺少 type');
+  }
+  if (type != 'group_event' && type != 'chat_message') return null;
+  final data = decoded['data'];
+  if (data is! Map<String, dynamic>) {
+    throw const FormatException('WebSocket 消息缺少 data');
+  }
+  try {
+    if (type == 'group_event') {
+      final nickname = data['nickname'];
+      final groupId = decoded['group_id'];
+      if (nickname is! String || groupId is! String) {
+        throw const FormatException('群组事件字段无效');
+      }
+      final petEmoji = data['pet_emoji'];
+      final avatarUrl = data['avatar_url'];
+      return GroupCompletionEvent(
+        groupId: groupId,
+        nickname: nickname,
+        petEmoji: petEmoji is String ? petEmoji : '🦌',
+        avatarUrl: avatarUrl is String ? avatarUrl : null,
+      );
+    }
+    return ChatServerEvent(ChatMessage.fromJson(data));
+  } on FormatException {
+    rethrow;
+  } on Object catch (error) {
+    throw FormatException('WebSocket 消息字段无效: $error');
+  }
+}
+
 class WebSocketService {
   WebSocketService({
     required this.onEvent,
     this.onConnectionStateChanged,
+    this.onMalformedMessage,
     this.baseUrl = defaultWsBaseUrl,
   });
 
   final void Function(ServerEvent event) onEvent;
   final void Function(BackendConnectionState state)? onConnectionStateChanged;
+  final void Function(Object error, StackTrace stack)? onMalformedMessage;
   final String baseUrl;
 
   WebSocketChannel? _channel;
@@ -109,23 +154,13 @@ class WebSocketService {
 
   void _handleMessage(dynamic raw) {
     if (raw is! String) return;
-    final json = jsonDecode(raw) as Map<String, dynamic>;
-    final type = json['type'] as String?;
-    final data = json['data'] as Map<String, dynamic>?;
-    final groupId = json['group_id'] as String? ?? '';
-    if (type == 'group_event' && data != null) {
-      onEvent(
-        GroupCompletionEvent(
-          groupId: groupId,
-          nickname: data['nickname'] as String,
-          petEmoji: data['pet_emoji'] as String? ?? '🦌',
-          avatarUrl: data['avatar_url'] as String?,
-        ),
-      );
-    } else if (type == 'chat_message' && data != null) {
-      onEvent(ChatServerEvent(ChatMessage.fromJson(data)));
+    try {
+      final event = decodeServerEvent(raw);
+      if (event != null) onEvent(event);
+      _attempt = 0;
+    } on Object catch (error, stack) {
+      onMalformedMessage?.call(error, stack);
     }
-    _attempt = 0;
   }
 
   void _handleDisconnect() {

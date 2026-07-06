@@ -37,7 +37,7 @@ class CircularIntervalPicker extends StatelessWidget {
                     style: const TextStyle(
                       color: AppColors.text,
                       fontSize: 26,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                       fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
                     ),
                   ),

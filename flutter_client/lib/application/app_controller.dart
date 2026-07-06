@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:ass_timer_flutter/core/diagnostics/crash_reporter.dart';
 import 'package:ass_timer_flutter/core/window/desktop_host.dart';
 import 'package:ass_timer_flutter/core/window/window_protocol.dart';
 import 'package:ass_timer_flutter/data/api_client.dart';
@@ -55,6 +56,15 @@ class AppController extends ChangeNotifier {
     _webSocket = WebSocketService(
       onEvent: _onServerEvent,
       onConnectionStateChanged: _onBackendConnectionStateChanged,
+      onMalformedMessage: (error, stack) {
+        unawaited(
+          CrashReporter.instance.record(
+            error,
+            stack,
+            context: 'websocket_message',
+          ),
+        );
+      },
     );
   }
 

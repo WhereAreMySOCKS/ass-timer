@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:ass_timer_flutter/core/diagnostics/crash_reporter.dart';
+import 'package:ass_timer_flutter/core/window/serialized_async_throttle.dart';
 import 'package:ass_timer_flutter/core/window/window_protocol.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -27,6 +29,34 @@ Offset calculateDockedPetPosition({
   return Offset(x, currentY.clamp(visiblePosition.dy, maxY));
 }
 
+class StartupResult {
+  const StartupResult({
+    required this.launchArguments,
+    required this.trayAvailable,
+    this.startupWarnings = const <String>[],
+  });
+
+  final WindowLaunchArguments launchArguments;
+  final bool trayAvailable;
+  final List<String> startupWarnings;
+}
+
+@visibleForTesting
+Future<bool> initializeTrayWithFallback({
+  required Future<void> Function() initialize,
+  required Future<void> Function() showTaskbarFallback,
+  required Future<void> Function(Object error, StackTrace stack) report,
+}) async {
+  try {
+    await initialize();
+    return true;
+  } on Object catch (error, stack) {
+    await report(error, stack);
+    await showTaskbarFallback();
+    return false;
+  }
+}
+
 class DesktopHost with TrayListener, WindowListener {
   DesktopHost._();
 
@@ -47,8 +77,12 @@ class DesktopHost with TrayListener, WindowListener {
       StreamController<String>.broadcast();
   Timer? _moveSettledTimer;
   VoidCallback? onPetMoveSettled;
+  final SerializedAsyncThrottle _bubbleAnchorThrottle =
+      SerializedAsyncThrottle(const Duration(milliseconds: 33));
+  bool _disposed = false;
+  bool _trayAvailable = true;
 
-  Future<WindowLaunchArguments> initializeCurrentWindow() async {
+  Future<StartupResult> initializeCurrentWindow() async {
     await windowManager.ensureInitialized();
     final controller = await WindowController.fromCurrentEngine();
     final arguments = WindowLaunchArguments.decode(controller.arguments);
@@ -96,6 +130,8 @@ class DesktopHost with TrayListener, WindowListener {
     if (arguments.role == WindowRole.controlCenter) {
       await _resizeControlWindow(arguments.route ?? ControlRoute.timer);
     }
+    var trayAvailable = !Platform.isWindows || arguments.role != WindowRole.pet;
+    final startupWarnings = <String>[];
     if (Platform.isWindows && arguments.role == WindowRole.pet) {
       const MethodChannel('ass_timer/power_events_windows')
           .setMethodCallHandler((call) async {
@@ -103,12 +139,27 @@ class DesktopHost with TrayListener, WindowListener {
           _windowsPowerEvents.add(call.arguments as String);
         }
       });
-      await _initializeWindowsTray();
+      trayAvailable = await initializeTrayWithFallback(
+        initialize: _initializeWindowsTray,
+        report: (error, stack) => CrashReporter.instance.record(
+          error,
+          stack,
+          context: 'windows_tray_startup',
+        ),
+        showTaskbarFallback: () => windowManager.setSkipTaskbar(false),
+      );
+      if (!trayAvailable) {
+        startupWarnings.add('系统托盘初始化失败，已保留任务栏入口。');
+        trayManager.removeListener(this);
+      }
+      _trayAvailable = trayAvailable;
     }
-    if (arguments.role == WindowRole.pet) {
-      windowManager.addListener(this);
-    }
-    return arguments;
+    windowManager.addListener(this);
+    return StartupResult(
+      launchArguments: arguments,
+      trayAvailable: trayAvailable,
+      startupWarnings: List<String>.unmodifiable(startupWarnings),
+    );
   }
 
   WindowLaunchArguments get launchArguments =>
@@ -119,6 +170,10 @@ class DesktopHost with TrayListener, WindowListener {
   ) async {
     _rootCommandHandler = commandHandler;
     await _currentWindow?.setWindowMethodHandler((call) async {
+      if (call.method == 'childClosed' && call.arguments is String) {
+        _forgetChild(call.arguments as String);
+        return true;
+      }
       if (call.method != 'command' || call.arguments is! String) return null;
       return _rootCommandHandler?.call(
         WindowEnvelope.decode(call.arguments as String),
@@ -202,8 +257,9 @@ class DesktopHost with TrayListener, WindowListener {
         failed.add(child);
       }
     }
-    _children.removeWhere(failed.contains);
-    await _positionBubbleNearPet();
+    for (final child in failed) {
+      _forgetChild(child.windowId);
+    }
   }
 
   Future<void> openControlCenter(
@@ -236,7 +292,6 @@ class DesktopHost with TrayListener, WindowListener {
     _setWindowForRoute(route, controller);
     _children.add(controller);
     await controller.show();
-    await _positionBubbleNearPet();
   }
 
   Future<void> showBubble() async {
@@ -244,6 +299,7 @@ class DesktopHost with TrayListener, WindowListener {
     if (existing != null) {
       try {
         await existing.show();
+        _scheduleBubblePosition(immediate: true);
         return;
       } on Object {
         _children.remove(existing);
@@ -262,6 +318,7 @@ class DesktopHost with TrayListener, WindowListener {
     _bubbleWindow = controller;
     _children.add(controller);
     await controller.show();
+    _scheduleBubblePosition(immediate: true);
   }
 
   Future<void> hideBubble() async => _bubbleWindow?.hide();
@@ -313,7 +370,6 @@ class DesktopHost with TrayListener, WindowListener {
       nextFacingLeft = true;
     }
     await windowManager.setPosition(Offset(nextX, position.dy));
-    await _positionBubbleNearPet();
     return nextFacingLeft;
   }
 
@@ -349,11 +405,11 @@ class DesktopHost with TrayListener, WindowListener {
       final x = start.dx + horizontal * t;
       final y = start.dy - 4 * size.height * t * (1 - t);
       await windowManager.setPosition(Offset(x, y));
-      await _positionBubbleNearPet();
-      await Future<void>.delayed(const Duration(milliseconds: 16));
+      await Future<void>.delayed(
+        Duration(milliseconds: Platform.isWindows ? 33 : 16),
+      );
     }
     await windowManager.setPosition(Offset(start.dx + horizontal, start.dy));
-    await _positionBubbleNearPet();
   }
 
   Future<({Offset position, PetDockSide? dockSide})> settlePetWindow(
@@ -390,7 +446,6 @@ class DesktopHost with TrayListener, WindowListener {
       position.dy.clamp(visiblePosition.dy, maxY),
     );
     await windowManager.setPosition(position, animate: side != null);
-    await _positionBubbleNearPet();
     return (position: position, dockSide: side);
   }
 
@@ -409,7 +464,6 @@ class DesktopHost with TrayListener, WindowListener {
     );
     await windowManager.setSize(dockedSize);
     await windowManager.setPosition(position, animate: true);
-    await _positionBubbleNearPet();
     return position;
   }
 
@@ -432,7 +486,6 @@ class DesktopHost with TrayListener, WindowListener {
     );
     await windowManager.setSize(fullSize);
     await windowManager.setPosition(position, animate: true);
-    await _positionBubbleNearPet();
     return position;
   }
 
@@ -470,7 +523,9 @@ class DesktopHost with TrayListener, WindowListener {
       await windowManager.setSize(const Size(224, 200));
       await windowManager.setResizable(false);
       await windowManager.setAsFrameless();
-      await windowManager.setSkipTaskbar(true);
+      await windowManager.setSkipTaskbar(
+        !Platform.isWindows || _trayAvailable,
+      );
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setVisibleOnAllWorkspaces(
         true,
@@ -487,7 +542,7 @@ class DesktopHost with TrayListener, WindowListener {
           .cast<String>();
 
   Future<void> quit() async {
-    if (Platform.isWindows) await trayManager.destroy();
+    if (Platform.isWindows && _trayAvailable) await trayManager.destroy();
     await windowManager.destroy();
   }
 
@@ -501,7 +556,12 @@ class DesktopHost with TrayListener, WindowListener {
     _moveSettledTimer = Timer(const Duration(milliseconds: 180), () {
       onPetMoveSettled?.call();
     });
-    unawaited(_positionBubbleNearPet());
+    _scheduleBubblePosition();
+  }
+
+  @override
+  void onWindowClose() {
+    unawaited(_handleCurrentWindowClosed());
   }
 
   Future<Display> _displayFor(Offset position, Size size) async {
@@ -513,6 +573,14 @@ class DesktopHost with TrayListener, WindowListener {
       if ((origin & visible).contains(center)) return display;
     }
     return screenRetriever.getPrimaryDisplay();
+  }
+
+  void _scheduleBubblePosition({bool immediate = false}) {
+    if (launchArguments.role != WindowRole.pet) return;
+    _bubbleAnchorThrottle.schedule(
+      _positionBubbleNearPet,
+      immediate: immediate,
+    );
   }
 
   Future<void> _positionBubbleNearPet() async {
@@ -527,6 +595,49 @@ class DesktopHost with TrayListener, WindowListener {
     } on Object {
       // A newly-created secondary engine may not have registered yet.
     }
+  }
+
+  Future<void> _handleCurrentWindowClosed() async {
+    final current = _currentWindow;
+    final rootId = launchArguments.rootWindowId;
+    if (launchArguments.role != WindowRole.pet &&
+        current != null &&
+        rootId != null) {
+      try {
+        await WindowController.fromWindowId(rootId)
+            .invokeMethod<void>('childClosed', current.windowId);
+      } on Object catch (error, stack) {
+        await CrashReporter.instance.record(
+          error,
+          stack,
+          context: 'notify_child_closed',
+        );
+      }
+    }
+    await disposeCurrentWindow();
+  }
+
+  void _forgetChild(String windowId) {
+    _children.removeWhere((window) => window.windowId == windowId);
+    if (_settingsWindow?.windowId == windowId) _settingsWindow = null;
+    if (_chatWindow?.windowId == windowId) _chatWindow = null;
+    if (_leaderboardWindow?.windowId == windowId) _leaderboardWindow = null;
+    if (_bubbleWindow?.windowId == windowId) _bubbleWindow = null;
+  }
+
+  Future<void> disposeCurrentWindow() async {
+    if (_disposed) return;
+    _disposed = true;
+    _moveSettledTimer?.cancel();
+    _bubbleAnchorThrottle.dispose();
+    windowManager.removeListener(this);
+    await _currentWindow?.setWindowMethodHandler(null);
+    if (Platform.isWindows && launchArguments.role == WindowRole.pet) {
+      const MethodChannel('ass_timer/power_events_windows')
+          .setMethodCallHandler(null);
+      trayManager.removeListener(this);
+    }
+    await _windowsPowerEvents.close();
   }
 
   Future<void> _initializeWindowsTray() async {

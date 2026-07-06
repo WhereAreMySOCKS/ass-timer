@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:ass_timer_flutter/application/app_controller.dart';
+import 'package:ass_timer_flutter/core/diagnostics/crash_reporter.dart';
 import 'package:ass_timer_flutter/core/theme/app_theme.dart';
+import 'package:ass_timer_flutter/core/widgets/responsive_collection.dart';
 import 'package:ass_timer_flutter/data/api_models.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:ass_timer_flutter/features/onboarding/circular_interval_picker.dart';
@@ -189,7 +191,7 @@ class _SettingsTabButton extends StatelessWidget {
                 label,
                 style: TextStyle(
                   fontSize: 12,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
                   color: selected ? AppColors.accent : AppColors.text,
                 ),
               ),
@@ -214,7 +216,7 @@ class _PaneTitle extends StatelessWidget {
             style: const TextStyle(
               color: AppColors.text,
               fontSize: 18,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w500,
             ),
           ),
           if (subtitle != null) ...<Widget>[
@@ -345,7 +347,7 @@ class _GroupsPaneState extends State<_GroupsPane> {
                               child: Icon(Icons.groups_outlined, size: 19)),
                           title: Text(
                             group.name.isEmpty ? '未命名群组' : group.name,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
+                            style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
                           subtitle: Text('${group.members.length} 位成员'),
                           childrenPadding:
@@ -646,7 +648,7 @@ class _ChatPaneState extends State<_ChatPane> {
                                         selectedJoinedGroup?.groupName ??
                                         '群聊',
                                     style: const TextStyle(
-                                        fontWeight: FontWeight.w600),
+                                        fontWeight: FontWeight.w500),
                                   ),
                                 ),
                                 if (selectedGroup != null)
@@ -712,7 +714,7 @@ class _ChatPaneState extends State<_ChatPane> {
                                                 Text(
                                                   message.nickname,
                                                   style: const TextStyle(
-                                                    fontWeight: FontWeight.w600,
+                                                    fontWeight: FontWeight.w500,
                                                     fontSize: 12,
                                                   ),
                                                 ),
@@ -989,75 +991,13 @@ class _MediaPane extends StatelessWidget {
                 style: TextStyle(color: AppColors.secondaryText)),
           ),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) => GridView.count(
-              crossAxisCount: constraints.maxWidth >= 650 ? 3 : 2,
-              childAspectRatio: 1.35,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              children: <Widget>[
-                for (final slot in slots)
-                  AppCard(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Icon(slot.$3, color: AppColors.accent),
-                        const SizedBox(height: 10),
-                        Text(slot.$2,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w600)),
-                        Text(
-                          controller.snapshot.config.customActionMedia
-                                  .containsKey(slot.$1)
-                              ? '已设置自定义照片'
-                              : '默认素材',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        if (controller.snapshot.config.customActionMedia
-                            .containsKey(slot.$1))
-                          CheckboxListTile(
-                            contentPadding: EdgeInsets.zero,
-                            dense: true,
-                            title: const Text('去除背景',
-                                style: TextStyle(fontSize: 12)),
-                            value: controller.snapshot.config
-                                .customActionMedia[slot.$1]!.removesBackground,
-                            onChanged: controller.supportsBackgroundRemoval
-                                ? (value) => controller.setBackgroundRemoval(
-                                      slot.$1,
-                                      value ?? false,
-                                    )
-                                : null,
-                          ),
-                        const Spacer(),
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () => _choosePhoto(slot.$1),
-                                child: Text(
-                                  controller.snapshot.config.customActionMedia
-                                          .containsKey(slot.$1)
-                                      ? '更换…'
-                                      : '选择照片…',
-                                ),
-                              ),
-                            ),
-                            if (controller.snapshot.config.customActionMedia
-                                .containsKey(slot.$1))
-                              IconButton(
-                                tooltip: '恢复默认',
-                                onPressed: () =>
-                                    controller.removeCustomMedia(slot.$1),
-                                icon: const Icon(Icons.restore, size: 18),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
+          child: ResponsiveCollection(
+            itemCount: slots.length,
+            itemBuilder: (context, index, singleColumn) => _MediaSlotCard(
+              controller: controller,
+              slot: slots[index],
+              compact: singleColumn,
+              onChoosePhoto: _choosePhoto,
             ),
           ),
         ),
@@ -1073,6 +1013,70 @@ class _MediaPane extends StatelessWidget {
     );
     final file = await openFile(acceptedTypeGroups: const <XTypeGroup>[group]);
     if (file != null) await controller.saveCustomMedia(slot, file.path);
+  }
+}
+
+class _MediaSlotCard extends StatelessWidget {
+  const _MediaSlotCard({
+    required this.controller,
+    required this.slot,
+    required this.compact,
+    required this.onChoosePhoto,
+  });
+
+  final AppController controller;
+  final (String, String, IconData) slot;
+  final bool compact;
+  final Future<void> Function(String slot) onChoosePhoto;
+
+  @override
+  Widget build(BuildContext context) {
+    final entry = controller.snapshot.config.customActionMedia[slot.$1];
+    final content = <Widget>[
+      Icon(slot.$3, color: AppColors.accent),
+      const SizedBox(height: 10),
+      Text(slot.$2, style: const TextStyle(fontWeight: FontWeight.w500)),
+      Text(
+        entry == null ? '默认素材' : '已设置自定义照片',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+      if (entry != null && controller.supportsBackgroundRemoval)
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text('去除背景', style: TextStyle(fontSize: 12)),
+          value: entry.removesBackground,
+          onChanged: (value) => controller.setBackgroundRemoval(
+            slot.$1,
+            value ?? false,
+          ),
+        ),
+      if (!compact) const Spacer() else const SizedBox(height: 12),
+      Row(
+        children: <Widget>[
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => onChoosePhoto(slot.$1),
+              child: Text(entry == null ? '选择照片…' : '更换…'),
+            ),
+          ),
+          if (entry != null)
+            IconButton(
+              tooltip: '恢复默认',
+              onPressed: () => controller.removeCustomMedia(slot.$1),
+              icon: const Icon(Icons.restore, size: 18),
+            ),
+        ],
+      ),
+    ];
+    return AppCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: content,
+      ),
+    );
   }
 }
 
@@ -1108,7 +1112,7 @@ class _AboutPane extends StatelessWidget {
                     children: <Widget>[
                       const Text('该提肛了',
                           style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600)),
+                              fontSize: 18, fontWeight: FontWeight.w500)),
                       Text(
                         '版本 ${snapshot.data?.version ?? '2.0.0'} (${snapshot.data?.buildNumber ?? '1'})',
                         style: Theme.of(context).textTheme.bodySmall,
@@ -1138,7 +1142,7 @@ class _AboutPane extends StatelessWidget {
                               Text(
                                 controller.snapshot.config.nickname ?? '未设置昵称',
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.w600),
+                                    fontWeight: FontWeight.w500),
                               ),
                               Text(
                                 '累计${controller.exerciseName} ${controller.snapshot.config.localEventCount} 次',
@@ -1191,6 +1195,12 @@ class _AboutPane extends StatelessWidget {
                       onPressed: () => controller.checkForUpdate(),
                       icon: const Icon(Icons.refresh, size: 17),
                       label: const Text('检查更新'),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: CrashReporter.instance.openLogsDirectory,
+                      icon: const Icon(Icons.folder_open_outlined, size: 17),
+                      label: const Text('打开日志目录'),
                     ),
                     if (controller.availableUpdate != null) ...<Widget>[
                       const SizedBox(height: 8),

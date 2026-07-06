@@ -95,7 +95,7 @@ class _OnboardingViewState extends ConsumerState<OnboardingView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     const Text('昵称',
-                        style: TextStyle(fontWeight: FontWeight.w600)),
+                        style: TextStyle(fontWeight: FontWeight.w500)),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _nicknameController,
@@ -275,7 +275,7 @@ class _Sidebar extends StatelessWidget {
                   padding: EdgeInsets.symmetric(horizontal: 6),
                   child: Text('该提肛了',
                       style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
                 ),
                 const Padding(
                   padding: EdgeInsets.fromLTRB(6, 4, 6, 18),
@@ -334,7 +334,7 @@ class _StepRow extends StatelessWidget {
           const SizedBox(width: 10),
           Text(labels[value]!,
               style: TextStyle(
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w500)),
+                  fontWeight: active ? FontWeight.w500 : FontWeight.w400)),
         ],
       ),
     );

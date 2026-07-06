@@ -29,7 +29,11 @@ ThemeData buildAppTheme() {
     brightness: Brightness.light,
     colorScheme: scheme,
     scaffoldBackgroundColor: AppColors.canvas,
-    fontFamily: null,
+    fontFamily: 'NotoSansSC',
+    fontFamilyFallback: const <String>[
+      'Segoe UI Emoji',
+      'Apple Color Emoji',
+    ],
     visualDensity: VisualDensity.standard,
     focusColor: AppColors.accentSoft,
     textTheme: const TextTheme(
@@ -41,7 +45,7 @@ ThemeData buildAppTheme() {
       titleMedium: TextStyle(
         color: AppColors.text,
         fontSize: 16,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
       ),
       bodyMedium: TextStyle(
         color: AppColors.text,
@@ -75,7 +79,7 @@ ThemeData buildAppTheme() {
       style: FilledButton.styleFrom(
         minimumSize: const Size(104, 42),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(

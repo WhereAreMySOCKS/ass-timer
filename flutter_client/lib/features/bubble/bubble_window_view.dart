@@ -49,7 +49,7 @@ class _BubbleCard extends StatelessWidget {
               children: <Widget>[
                 Text(controller.reminderTitle,
                     style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.w800)),
+                        fontSize: 20, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
                 Text('是时候做一下${controller.exerciseName}运动了'),
                 const SizedBox(height: 14),

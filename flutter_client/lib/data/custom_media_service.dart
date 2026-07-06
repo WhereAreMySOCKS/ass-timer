@@ -3,6 +3,7 @@ import 'dart:isolate';
 
 import 'package:ass_timer_flutter/data/app_store.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
@@ -109,8 +110,7 @@ class CustomMediaService {
   }
 
   static Uint8List _makeBackground(Uint8List source) {
-    var image = img.decodeImage(source);
-    if (image == null) throw const FormatException('无法读取图片');
+    var image = decodeValidatedCustomImage(source);
     image = img.bakeOrientation(image);
     const outputWidth = 216;
     const outputHeight = 288;
@@ -142,5 +142,42 @@ class CustomMediaService {
     return const <String>{'png', 'jpg', 'jpeg', 'webp'}.contains(extension)
         ? extension
         : 'img';
+  }
+}
+
+@visibleForTesting
+img.Image decodeValidatedCustomImage(Uint8List source) {
+  try {
+    final decoder = img.findDecoderForData(source);
+    if (decoder == null) throw const FormatException('无法读取图片');
+    final info = decoder.startDecode(source);
+    if (info == null) throw const FormatException('无法读取图片');
+    validateCustomImageMetadata(
+      width: info.width,
+      height: info.height,
+      frameCount: info.numFrames,
+    );
+    final image = decoder.decodeFrame(0);
+    if (image == null) throw const FormatException('无法读取图片');
+    return image;
+  } on FormatException {
+    rethrow;
+  } on Object {
+    throw const FormatException('无法读取图片');
+  }
+}
+
+@visibleForTesting
+void validateCustomImageMetadata({
+  required int width,
+  required int height,
+  required int frameCount,
+}) {
+  const maximumPixels = 16000000;
+  if (width <= 0 || height <= 0 || width * height > maximumPixels) {
+    throw const FormatException('图片尺寸过大，请选择不超过 1600 万像素的图片');
+  }
+  if (frameCount != 1) {
+    throw const FormatException('暂不支持动图或多帧图片');
   }
 }
