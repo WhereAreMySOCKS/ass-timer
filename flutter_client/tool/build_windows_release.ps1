@@ -11,39 +11,86 @@ $buildDir = Join-Path (Get-Location) "build\windows\x64\runner\Release"
 $zipPath = Join-Path $releaseDir "Ass-Timer-Windows-x64.zip"
 $runtimeNames = @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")
 
-function Find-VcRuntimeDirectory {
-  $candidates = @()
-  if ($env:VCToolsRedistDir) {
-    $candidates += Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT"
+function Test-VcRuntimeDirectory {
+  param([string]$Path)
+
+  if ([string]::IsNullOrWhiteSpace($Path) -or
+      -not (Test-Path -LiteralPath $Path -PathType Container)) {
+    return $false
   }
 
-  $visualStudioRoot = Join-Path ${env:ProgramFiles} "Microsoft Visual Studio\2022"
-  if (Test-Path $visualStudioRoot) {
-    $candidates += Get-ChildItem $visualStudioRoot -Directory -Recurse -ErrorAction SilentlyContinue |
-      Where-Object { $_.FullName -like "*VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" } |
-      Sort-Object FullName -Descending |
-      Select-Object -ExpandProperty FullName
-  }
-
-  foreach ($candidate in $candidates) {
-    $missingRuntime = @($runtimeNames | Where-Object {
-      -not (Test-Path (Join-Path $candidate $_))
-    })
-    if ($missingRuntime.Count -gt 0) {
-      continue
+  foreach ($runtime in $runtimeNames) {
+    if (-not (Test-Path -LiteralPath (Join-Path $Path $runtime) -PathType Leaf)) {
+      return $false
     }
-    return $candidate
+  }
+  return $true
+}
+
+function Get-VcRuntimeCandidates {
+  $candidates = [System.Collections.Generic.List[string]]::new()
+
+  # Available in a Visual Studio developer shell. The CRT directory name is
+  # intentionally wildcarded because GitHub's windows-latest toolset changes.
+  if ($env:VCToolsRedistDir) {
+    $x64Root = Join-Path $env:VCToolsRedistDir "x64"
+    if (Test-Path -LiteralPath $x64Root -PathType Container) {
+      Get-ChildItem -LiteralPath $x64Root -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "Microsoft.VC*.CRT" } |
+        ForEach-Object { $candidates.Add($_.FullName) }
+    }
+  }
+
+  # GitHub-hosted runners provide vswhere even when VCToolsRedistDir is not
+  # exported to the PowerShell step.
+  $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+  if (Test-Path -LiteralPath $vswhere -PathType Leaf) {
+    $installations = @(& $vswhere -all -products * -property installationPath)
+    foreach ($installation in $installations) {
+      if ([string]::IsNullOrWhiteSpace($installation)) { continue }
+      $redistRoot = Join-Path $installation "VC\Redist\MSVC"
+      if (-not (Test-Path -LiteralPath $redistRoot -PathType Container)) { continue }
+
+      Get-ChildItem -LiteralPath $redistRoot -Directory -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending |
+        ForEach-Object {
+          $x64Root = Join-Path $_.FullName "x64"
+          if (Test-Path -LiteralPath $x64Root -PathType Container) {
+            Get-ChildItem -LiteralPath $x64Root -Directory -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -like "Microsoft.VC*.CRT" } |
+              ForEach-Object { $candidates.Add($_.FullName) }
+          }
+        }
+  }
+
+  # A 64-bit GitHub runner already has the matching redistributable installed.
+  # Keeping this last makes the Visual Studio redist payload the preferred copy.
+  if ($env:WINDIR) {
+    $candidates.Add((Join-Path $env:WINDIR "System32"))
+  }
+
+  return @($candidates | Select-Object -Unique)
+}
+
+function Find-VcRuntimeDirectory {
+  $script:runtimeCandidates = @(Get-VcRuntimeCandidates)
+  foreach ($candidate in $script:runtimeCandidates) {
+    if (Test-VcRuntimeDirectory $candidate) { return $candidate }
   }
   return $null
 }
 
 $runtimeDirectory = Find-VcRuntimeDirectory
+if (-not $runtimeDirectory) {
+  Write-Host "Searched VC runtime directories:"
+  $runtimeCandidates | ForEach-Object { Write-Host "  $_" }
+  throw "x64 Visual C++ runtime not found. Install the Visual Studio C++ Redistributable components."
+}
+Write-Host "Using Visual C++ runtime from: $runtimeDirectory"
+
 foreach ($runtime in $runtimeNames) {
   $destination = Join-Path $buildDir $runtime
   if (-not (Test-Path $destination)) {
-    if (-not $runtimeDirectory) {
-      throw "VC143 x64 runtime not found. Install Visual Studio C++ Redistributable components."
-    }
     Copy-Item (Join-Path $runtimeDirectory $runtime) $destination
   }
 }
