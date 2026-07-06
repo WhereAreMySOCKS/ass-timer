@@ -433,11 +433,11 @@ class _PetActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const rightArc = <Offset>[
-      Offset(135, 48),
-      Offset(148, 76),
-      Offset(152, 106),
-      Offset(148, 136),
-      Offset(135, 164),
+      Offset(138, 43),
+      Offset(153, 70),
+      Offset(158, 100),
+      Offset(153, 130),
+      Offset(138, 157),
     ];
     final dockedRight = controller.snapshot.dockSide == PetDockSide.right;
     final positions = dockedRight

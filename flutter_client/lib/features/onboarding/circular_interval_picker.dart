@@ -20,28 +20,35 @@ class CircularIntervalPicker extends StatelessWidget {
         label: '提醒间隔',
         value: formatInterval(seconds),
         slider: true,
-        child: GestureDetector(
-          onPanUpdate: (details) =>
-              _update(details.localPosition, const Size.square(190)),
-          child: CustomPaint(
-            size: const Size.square(190),
-            painter: _IntervalPainter(progress: _progress),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text('每', style: Theme.of(context).textTheme.bodySmall),
-                  const SizedBox(height: 6),
-                  Text(
-                    formatInterval(seconds),
-                    style: const TextStyle(
-                      color: AppColors.text,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w500,
-                      fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+        child: SizedBox.square(
+          dimension: 190,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onPanDown: (details) =>
+                _update(details.localPosition, const Size.square(190)),
+            onPanUpdate: (details) =>
+                _update(details.localPosition, const Size.square(190)),
+            child: CustomPaint(
+              painter: _IntervalPainter(progress: _progress),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text('每', style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 6),
+                    Text(
+                      formatInterval(seconds),
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: <FontFeature>[
+                          FontFeature.tabularFigures()
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -91,7 +98,12 @@ class _IntervalPainter extends CustomPainter {
     canvas
       ..drawCircle(center, radius, background)
       ..drawArc(
-          bounds, -math.pi / 2, math.pi * 2 * progress, false, foreground);
+        bounds,
+        -math.pi / 2,
+        math.pi * 2 * progress,
+        false,
+        foreground,
+      );
     final angle = -math.pi / 2 + math.pi * 2 * progress;
     final knob = Offset(
       center.dx + math.cos(angle) * radius,

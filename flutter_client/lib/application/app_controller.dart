@@ -6,8 +6,10 @@ import 'package:ass_timer_flutter/core/window/window_protocol.dart';
 import 'package:ass_timer_flutter/data/api_client.dart';
 import 'package:ass_timer_flutter/data/api_models.dart';
 import 'package:ass_timer_flutter/data/app_store.dart';
+import 'package:ass_timer_flutter/data/avatar_cache.dart';
 import 'package:ass_timer_flutter/data/chat_cache.dart';
 import 'package:ass_timer_flutter/data/custom_media_service.dart';
+import 'package:ass_timer_flutter/data/remote_data_cache.dart';
 import 'package:ass_timer_flutter/data/web_socket_service.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:ass_timer_flutter/domain/bubble_queue.dart';
@@ -45,12 +47,11 @@ class AppController extends ChangeNotifier {
   AppController({required AppStore store, required ApiClient apiClient})
       : _store = store,
         _apiClient = apiClient,
+        _avatarCache = AvatarCache(store),
         _chatCache = ChatCache(store),
-        _customMedia = CustomMediaService(store) {
-    _timer = TimerEngine(
-      onChanged: _onTimerChanged,
-      onFire: _onTimerFire,
-    );
+        _customMedia = CustomMediaService(store),
+        _remoteDataCache = RemoteDataCache(store) {
+    _timer = TimerEngine(onChanged: _onTimerChanged, onFire: _onTimerFire);
     _bubbles = BubbleQueue(onChanged: _onBubblesChanged);
     _activity = PetActivityEngine(onChanged: _onPetActivityChanged);
     _webSocket = WebSocketService(
@@ -70,8 +71,10 @@ class AppController extends ChangeNotifier {
 
   final AppStore _store;
   final ApiClient _apiClient;
+  final AvatarCache _avatarCache;
   final ChatCache _chatCache;
   final CustomMediaService _customMedia;
+  final RemoteDataCache _remoteDataCache;
   late final TimerEngine _timer;
   late final BubbleQueue _bubbles;
   late final PetActivityEngine _activity;
@@ -80,6 +83,9 @@ class AppController extends ChangeNotifier {
   Timer? _interactionTimer;
   String? _activitySprite;
   bool _isChangingObedientMode = false;
+  bool _groupsRefreshing = false;
+  bool _leaderboardRefreshing = false;
+  String? _leaderboardGroupId;
 
   AppSnapshot snapshot = AppSnapshot.initial();
   bool isReady = false;
@@ -92,6 +98,8 @@ class AppController extends ChangeNotifier {
   AppVersionInfo? availableUpdate;
   List<GroupInfo> groups = <GroupInfo>[];
   List<LeaderboardEntry> leaderboard = <LeaderboardEntry>[];
+  bool leaderboardLoading = false;
+  String? leaderboardError;
   final Map<String, List<ChatMessage>> chatMessages =
       <String, List<ChatMessage>>{};
 
@@ -110,6 +118,22 @@ class AppController extends ChangeNotifier {
     final nextReminderAt = await _store.loadNextReminderAt();
     supportsBackgroundRemoval = await _customMedia.supportsBackgroundRemoval();
     snapshot = snapshot.copyWith(config: config);
+    final userId = config.userId;
+    if (userId != null) {
+      groups = await _remoteDataCache.loadGroups(userId);
+      if (groups.isEmpty) {
+        groups = config.joinedGroups
+            .map(
+              (group) => GroupInfo(
+                groupId: group.groupId,
+                name: group.groupName,
+                inviteCode: group.inviteCode,
+                members: const <GroupMember>[],
+              ),
+            )
+            .toList(growable: false);
+      }
+    }
     isReady = true;
     notifyListeners();
 
@@ -125,8 +149,10 @@ class AppController extends ChangeNotifier {
         avatarPath: avatarPath,
       );
       _update(
-          config: profile.copyWith(
-              intervalSeconds: snapshot.config.intervalSeconds));
+        config: profile.copyWith(
+          intervalSeconds: snapshot.config.intervalSeconds,
+        ),
+      );
       await _store.saveConfig(snapshot.config);
     });
   }
@@ -145,10 +171,13 @@ class AppController extends ChangeNotifier {
     if (userId == null) return;
     await _guardBusy(() async {
       final group = await _apiClient.joinGroup(userId, code.trim());
-      if (!snapshot.config.joinedGroups
-          .any((candidate) => candidate.groupId == group.groupId)) {
-        await _saveGroups(
-            <JoinedGroup>[...snapshot.config.joinedGroups, group]);
+      if (!snapshot.config.joinedGroups.any(
+        (candidate) => candidate.groupId == group.groupId,
+      )) {
+        await _saveGroups(<JoinedGroup>[
+          ...snapshot.config.joinedGroups,
+          group,
+        ]);
       }
     });
   }
@@ -164,6 +193,21 @@ class AppController extends ChangeNotifier {
             .toList(growable: false),
       );
       groups.removeWhere((group) => group.groupId == groupId);
+    });
+  }
+
+  Future<void> updateAvatar(String sourcePath) async {
+    final userId = snapshot.config.userId;
+    if (userId == null) return;
+    await _guardBusy(() async {
+      final profile = await _apiClient.updateUserAvatar(userId, sourcePath);
+      final config = snapshot.config.copyWith(
+        nickname: profile.nickname,
+        petEmoji: profile.petEmoji,
+        avatarUrl: profile.avatarUrl,
+      );
+      _update(config: config);
+      await _store.saveConfig(config);
     });
   }
 
@@ -196,14 +240,16 @@ class AppController extends ChangeNotifier {
     await _store.clearLocalState();
     groups = <GroupInfo>[];
     leaderboard = <LeaderboardEntry>[];
+    leaderboardLoading = false;
+    leaderboardError = null;
+    _leaderboardGroupId = null;
     chatMessages.clear();
     activeChatGroupId = null;
     availableUpdate = null;
     backendConnectionState = BackendConnectionState.disconnected;
-    snapshot = AppSnapshot.initial().copyWith(
-      revision: snapshot.revision + 1,
-    );
+    snapshot = AppSnapshot.initial().copyWith(revision: snapshot.revision + 1);
     notifyListeners();
+    await DesktopHost.instance.setOnboardingMode(true);
     await DesktopHost.instance.closeSecondaryWindows();
   }
 
@@ -259,8 +305,9 @@ class AppController extends ChangeNotifier {
           currentSprite: '后视镜',
           dockSide: PetDockSide.left,
         );
-        final position =
-            await DesktopHost.instance.dockPetWindow(PetDockSide.left);
+        final position = await DesktopHost.instance.dockPetWindow(
+          PetDockSide.left,
+        );
         final config = enteringConfig.copyWith(
           windowOriginX: position.dx,
           windowOriginY: position.dy,
@@ -278,11 +325,7 @@ class AppController extends ChangeNotifier {
           windowOriginX: position.dx,
           windowOriginY: position.dy,
         );
-        _update(
-          config: config,
-          currentSprite: '起飞',
-          clearDockSide: true,
-        );
+        _update(config: config, currentSprite: '起飞', clearDockSide: true);
         _activity.fly();
         await DesktopHost.instance.performPetFlight(
           snapshot.petFacingLeft,
@@ -356,7 +399,10 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  void setPetFacingLeft(bool value) => _update(petFacingLeft: value);
+  void setPetFacingLeft(bool value) {
+    _activity.setFacingLeft(value);
+    if (snapshot.petFacingLeft != value) _update(petFacingLeft: value);
+  }
 
   Future<void> settlePetWindow() async {
     if (_isChangingObedientMode) return;
@@ -383,11 +429,7 @@ class AppController extends ChangeNotifier {
       windowOriginX: position.dx,
       windowOriginY: position.dy,
     );
-    _update(
-      config: config,
-      currentSprite: '后视镜',
-      dockSide: PetDockSide.left,
-    );
+    _update(config: config, currentSprite: '后视镜', dockSide: PetDockSide.left);
     await _store.saveConfig(config);
   }
 
@@ -400,21 +442,62 @@ class AppController extends ChangeNotifier {
 
   Future<void> refreshGroups() async {
     final userId = snapshot.config.userId;
-    if (userId == null) return;
+    if (userId == null || _groupsRefreshing) return;
+    _groupsRefreshing = true;
     try {
       groups = await _apiClient.getUserGroups(userId);
-      notifyListeners();
+      await _remoteDataCache.saveGroups(userId, groups);
+      final joinedGroups = groups
+          .map(
+            (group) => JoinedGroup(
+              groupId: group.groupId,
+              groupName: group.name,
+              inviteCode: group.inviteCode,
+            ),
+          )
+          .toList(growable: false);
+      final currentIds = snapshot.config.joinedGroups
+          .map((group) => group.groupId)
+          .toList(growable: false);
+      final refreshedIds =
+          joinedGroups.map((group) => group.groupId).toList(growable: false);
+      if (!listEquals(currentIds, refreshedIds)) {
+        final config = snapshot.config.copyWith(joinedGroups: joinedGroups);
+        _update(config: config);
+        await _store.saveConfig(config);
+      } else {
+        notifyListeners();
+      }
     } on Object {
-      _showError('群组信息加载失败，请重试');
+      if (groups.isEmpty) _showError('群组信息加载失败，请重试');
+    } finally {
+      _groupsRefreshing = false;
     }
   }
 
   Future<void> refreshLeaderboard(String groupId) async {
+    if (_leaderboardRefreshing) return;
+    _leaderboardRefreshing = true;
     try {
-      leaderboard = await _apiClient.getLeaderboard(groupId);
+      if (_leaderboardGroupId != groupId) {
+        leaderboard = await _remoteDataCache.loadLeaderboard(groupId);
+        _leaderboardGroupId = groupId;
+      }
+      leaderboardLoading = leaderboard.isEmpty;
+      leaderboardError = null;
       notifyListeners();
-    } on Object {
-      _showError('排行榜加载失败，请重试');
+      try {
+        leaderboard = await _apiClient.getLeaderboard(groupId);
+        await _remoteDataCache.saveLeaderboard(groupId, leaderboard);
+      } on Object {
+        if (leaderboard.isEmpty) {
+          leaderboardError = '排行榜加载失败，请重试';
+        }
+      }
+    } finally {
+      leaderboardLoading = false;
+      _leaderboardRefreshing = false;
+      notifyListeners();
     }
   }
 
@@ -440,10 +523,14 @@ class AppController extends ChangeNotifier {
       return;
     }
     try {
-      final message =
-          await _apiClient.sendChatMessage(groupId, userId, normalized);
-      chatMessages[groupId] =
-          await _chatCache.merge(groupId, <ChatMessage>[message]);
+      final message = await _apiClient.sendChatMessage(
+        groupId,
+        userId,
+        normalized,
+      );
+      chatMessages[groupId] = await _chatCache.merge(groupId, <ChatMessage>[
+        message,
+      ]);
       notifyListeners();
     } on Object {
       _showError('消息发送失败，请重试');
@@ -456,10 +543,7 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> openControlCenter(
-    ControlRoute route, {
-    String? groupId,
-  }) async {
+  Future<void> openControlCenter(ControlRoute route, {String? groupId}) async {
     controlRoute = route;
     if (route != ControlRoute.chat) {
       activeChatGroupId = null;
@@ -502,6 +586,12 @@ class AppController extends ChangeNotifier {
       rethrow;
     }
   }
+
+  Future<String?> customMediaPreviewPath(CustomActionMediaEntry entry) =>
+      _customMedia.previewPath(entry);
+
+  Future<String?> cachedAvatarPath(String avatarUrl) =>
+      _avatarCache.pathFor(resolveApiAssetUrl(avatarUrl));
 
   Future<void> removeCustomMedia(String slot) async {
     final media = Map<String, CustomActionMediaEntry>.of(
@@ -579,6 +669,8 @@ class AppController extends ChangeNotifier {
         await joinGroup(arguments['code'] as String);
       case WindowCommand.leaveGroup:
         await leaveGroup(arguments['groupId'] as String);
+      case WindowCommand.updateAvatar:
+        await updateAvatar(arguments['sourcePath'] as String);
       case WindowCommand.checkForUpdate:
         await checkForUpdate();
       case WindowCommand.saveCustomMedia:
@@ -606,6 +698,9 @@ class AppController extends ChangeNotifier {
         'snapshot': snapshot.toJson(),
         'groups': groups.map((group) => group.toJson()).toList(),
         'leaderboard': leaderboard.map((entry) => entry.toJson()).toList(),
+        'leaderboardLoading': leaderboardLoading,
+        'leaderboardError': leaderboardError,
+        'leaderboardGroupId': _leaderboardGroupId,
         'chatMessages': chatMessages.map(
           (groupId, messages) => MapEntry(
             groupId,
@@ -652,6 +747,13 @@ class AppController extends ChangeNotifier {
     );
     final userId = snapshot.config.userId;
     if (userId != null) unawaited(_webSocket.connect(userId));
+    if (userId != null) unawaited(refreshGroups());
+    unawaited(
+      Future<void>.delayed(
+        const Duration(milliseconds: 400),
+        () => DesktopHost.instance.prewarmControlCenter(ControlRoute.chat),
+      ),
+    );
     unawaited(checkForUpdate(silent: true));
     _updateCheckTimer?.cancel();
     _updateCheckTimer = Timer.periodic(const Duration(hours: 6), (_) {
@@ -710,8 +812,10 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _handleIncomingChat(ChatMessage message) async {
-    chatMessages[message.groupId] =
-        await _chatCache.merge(message.groupId, <ChatMessage>[message]);
+    chatMessages[message.groupId] = await _chatCache.merge(
+      message.groupId,
+      <ChatMessage>[message],
+    );
     if (message.userId != snapshot.config.userId &&
         activeChatGroupId != message.groupId) {
       final unread = Map<String, int>.of(snapshot.unreadCounts);
@@ -837,8 +941,9 @@ class ReplicaAppController extends AppController {
 
   void _applyWindowState(Map<String, dynamic> payload, int revision) {
     if (revision < snapshot.revision) return;
-    snapshot =
-        AppSnapshot.fromJson(payload['snapshot'] as Map<String, dynamic>);
+    snapshot = AppSnapshot.fromJson(
+      payload['snapshot'] as Map<String, dynamic>,
+    );
     groups = (payload['groups'] as List<dynamic>? ?? const <dynamic>[])
         .whereType<Map<String, dynamic>>()
         .map(GroupInfo.fromJson)
@@ -848,6 +953,9 @@ class ReplicaAppController extends AppController {
             .whereType<Map<String, dynamic>>()
             .map(LeaderboardEntry.fromJson)
             .toList(growable: false);
+    leaderboardLoading = payload['leaderboardLoading'] as bool? ?? false;
+    leaderboardError = payload['leaderboardError'] as String?;
+    _leaderboardGroupId = payload['leaderboardGroupId'] as String?;
     chatMessages
       ..clear()
       ..addAll(
@@ -903,25 +1011,16 @@ class ReplicaAppController extends AppController {
     unawaited(
       DesktopHost.instance.sendCommand(
         WindowCommand.openControlCenter,
-        arguments: <String, dynamic>{
-          'route': route.name,
-          'groupId': groupId,
-        },
+        arguments: <String, dynamic>{'route': route.name, 'groupId': groupId},
       ),
     );
   }
 
   @override
-  Future<void> openControlCenter(
-    ControlRoute route, {
-    String? groupId,
-  }) =>
+  Future<void> openControlCenter(ControlRoute route, {String? groupId}) =>
       DesktopHost.instance.sendCommand(
         WindowCommand.openControlCenter,
-        arguments: <String, dynamic>{
-          'route': route.name,
-          'groupId': groupId,
-        },
+        arguments: <String, dynamic>{'route': route.name, 'groupId': groupId},
       );
 
   @override
@@ -945,10 +1044,7 @@ class ReplicaAppController extends AppController {
   Future<void> sendChat(String groupId, String content) =>
       DesktopHost.instance.sendCommand(
         WindowCommand.sendChat,
-        arguments: <String, dynamic>{
-          'groupId': groupId,
-          'content': content,
-        },
+        arguments: <String, dynamic>{'groupId': groupId, 'content': content},
       );
 
   @override
@@ -970,6 +1066,13 @@ class ReplicaAppController extends AppController {
       );
 
   @override
+  Future<void> updateAvatar(String sourcePath) =>
+      DesktopHost.instance.sendCommand(
+        WindowCommand.updateAvatar,
+        arguments: <String, dynamic>{'sourcePath': sourcePath},
+      );
+
+  @override
   Future<void> checkForUpdate({bool silent = false}) =>
       DesktopHost.instance.sendCommand(WindowCommand.checkForUpdate);
 
@@ -977,10 +1080,7 @@ class ReplicaAppController extends AppController {
   Future<void> saveCustomMedia(String slot, String sourcePath) =>
       DesktopHost.instance.sendCommand(
         WindowCommand.saveCustomMedia,
-        arguments: <String, dynamic>{
-          'slot': slot,
-          'sourcePath': sourcePath,
-        },
+        arguments: <String, dynamic>{'slot': slot, 'sourcePath': sourcePath},
       );
 
   @override

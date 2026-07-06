@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 abstract final class AppColors {
@@ -29,12 +31,9 @@ ThemeData buildAppTheme() {
     brightness: Brightness.light,
     colorScheme: scheme,
     scaffoldBackgroundColor: AppColors.canvas,
-    fontFamily: 'NotoSansSC',
-    fontFamilyFallback: const <String>[
-      'Segoe UI Emoji',
-      'Apple Color Emoji',
-    ],
-    visualDensity: VisualDensity.standard,
+    fontFamily: Platform.isMacOS ? null : 'NotoSansSC',
+    fontFamilyFallback: const <String>['Segoe UI Emoji', 'Apple Color Emoji'],
+    visualDensity: VisualDensity.compact,
     focusColor: AppColors.accentSoft,
     textTheme: const TextTheme(
       headlineSmall: TextStyle(
@@ -47,11 +46,7 @@ ThemeData buildAppTheme() {
         fontSize: 16,
         fontWeight: FontWeight.w500,
       ),
-      bodyMedium: TextStyle(
-        color: AppColors.text,
-        fontSize: 14,
-        height: 1.45,
-      ),
+      bodyMedium: TextStyle(color: AppColors.text, fontSize: 13, height: 1.45),
       bodySmall: TextStyle(
         color: AppColors.secondaryText,
         fontSize: 12,
@@ -73,18 +68,18 @@ ThemeData buildAppTheme() {
         borderRadius: BorderRadius.circular(8),
         borderSide: const BorderSide(color: AppColors.accent, width: 2),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size(104, 42),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        minimumSize: const Size(88, 32),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size(88, 42),
+        minimumSize: const Size(76, 32),
         side: const BorderSide(color: AppColors.border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
@@ -94,10 +89,11 @@ ThemeData buildAppTheme() {
 }
 
 class AppCard extends StatelessWidget {
-  const AppCard(
-      {required this.child,
-      super.key,
-      this.padding = const EdgeInsets.all(20)});
+  const AppCard({
+    required this.child,
+    super.key,
+    this.padding = const EdgeInsets.all(20),
+  });
 
   final Widget child;
   final EdgeInsets padding;
@@ -105,13 +101,8 @@ class AppCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: AppColors.border),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: const <BoxShadow>[
-            BoxShadow(
-                color: Color(0x12000000), blurRadius: 10, offset: Offset(0, 3)),
-          ],
+          color: Colors.black.withValues(alpha: 0.035),
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Padding(padding: padding, child: child),
       );

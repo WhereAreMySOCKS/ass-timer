@@ -145,6 +145,7 @@ class MainFlutterWindow: NSWindow {
     self.isOpaque = false
     self.backgroundColor = .clear
     self.hasShadow = false
+    self.acceptsMouseMovedEvents = true
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     FlutterMultiWindowPlugin.setOnWindowCreatedCallback { controller in

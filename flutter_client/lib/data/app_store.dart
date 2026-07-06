@@ -52,7 +52,12 @@ class AppStore {
     // Keep migrationVersion=1. Otherwise the next launch would immediately
     // import the legacy Swift preferences that the user just chose to clear.
     final root = await appSupportRoot();
-    for (final name in <String>['chat', 'custom-actions']) {
+    for (final name in <String>[
+      'chat',
+      'custom-actions',
+      'remote-cache',
+      'avatar-cache',
+    ]) {
       final directory = Directory(p.join(root.path, name));
       if (directory.existsSync()) await directory.delete(recursive: true);
     }

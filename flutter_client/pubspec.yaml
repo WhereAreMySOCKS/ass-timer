@@ -54,3 +54,4 @@ flutter:
     - assets/sprites/
     - assets/tray/
     - assets/fonts/OFL.txt
+    - macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_128.png

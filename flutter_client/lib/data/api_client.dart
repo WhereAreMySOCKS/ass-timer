@@ -9,6 +9,15 @@ const String defaultApiBaseUrl = String.fromEnvironment(
   defaultValue: 'https://api.guiji.online/ass-timer',
 );
 
+String resolveApiAssetUrl(String value, {String baseUrl = defaultApiBaseUrl}) {
+  final path = value.trim();
+  if (path.isEmpty) return '';
+  final uri = Uri.tryParse(path);
+  if (uri != null && uri.hasScheme) return uri.toString();
+  return '${baseUrl.replaceFirst(RegExp(r'/+$'), '')}/'
+      '${path.replaceFirst(RegExp(r'^/+'), '')}';
+}
+
 class ApiClient {
   ApiClient({Dio? dio, String baseUrl = defaultApiBaseUrl})
       : _dio = dio ??
@@ -48,13 +57,26 @@ class ApiClient {
     await _dio.delete<void>('/user/$userId');
   }
 
+  Future<UserConfig> updateUserAvatar(String userId, String avatarPath) async {
+    final response = await _dio.patch<Map<String, dynamic>>(
+      '/user/$userId',
+      data: FormData.fromMap(<String, dynamic>{
+        'avatar': await MultipartFile.fromFile(avatarPath),
+      }),
+    );
+    final json = _requireMap(response);
+    return UserConfig(
+      userId: json['user_id'] as String,
+      nickname: json['nickname'] as String,
+      petEmoji: json['pet_emoji'] as String? ?? '🦌',
+      avatarUrl: json['avatar_url'] as String?,
+    );
+  }
+
   Future<JoinedGroup> createGroup(String userId, String name) async {
     final response = await _dio.post<Map<String, dynamic>>(
       '/group/create',
-      data: <String, dynamic>{
-        'creator_user_id': userId,
-        'group_name': name,
-      },
+      data: <String, dynamic>{'creator_user_id': userId, 'group_name': name},
     );
     return _joinedGroup(_requireMap(response));
   }
@@ -90,14 +112,16 @@ class ApiClient {
   }
 
   Future<GroupInfo> getGroupInfo(String groupId) async {
-    final response =
-        await _dio.get<Map<String, dynamic>>('/group/$groupId/info');
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/group/$groupId/info',
+    );
     return GroupInfo.fromJson(_requireMap(response));
   }
 
   Future<List<LeaderboardEntry>> getLeaderboard(String groupId) async {
-    final response =
-        await _dio.get<Map<String, dynamic>>('/group/$groupId/rank');
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/group/$groupId/rank',
+    );
     final entries =
         _requireMap(response)['entries'] as List<dynamic>? ?? const <dynamic>[];
     return entries

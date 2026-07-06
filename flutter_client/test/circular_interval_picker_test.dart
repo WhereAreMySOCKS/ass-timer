@@ -20,6 +20,10 @@ void main() {
     );
 
     expect(find.text('40 分钟'), findsOneWidget);
+    expect(
+      tester.getSize(find.byType(CircularIntervalPicker)),
+      const Size.square(190),
+    );
     final semantics = tester.getSemantics(find.byType(CircularIntervalPicker));
     expect(semantics.label, contains('提醒间隔'));
     expect('${semantics.label}${semantics.value}', contains('40 分钟'));

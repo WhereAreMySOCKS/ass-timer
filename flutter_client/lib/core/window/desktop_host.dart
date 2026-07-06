@@ -65,6 +65,7 @@ class DesktopHost with TrayListener, WindowListener {
   WindowController? _settingsWindow;
   WindowController? _chatWindow;
   WindowController? _leaderboardWindow;
+  Future<WindowController>? _chatWindowCreation;
   WindowController? _bubbleWindow;
   WindowController? _currentWindow;
   WindowLaunchArguments? _launchArguments;
@@ -77,8 +78,9 @@ class DesktopHost with TrayListener, WindowListener {
       StreamController<String>.broadcast();
   Timer? _moveSettledTimer;
   VoidCallback? onPetMoveSettled;
-  final SerializedAsyncThrottle _bubbleAnchorThrottle =
-      SerializedAsyncThrottle(const Duration(milliseconds: 33));
+  final SerializedAsyncThrottle _bubbleAnchorThrottle = SerializedAsyncThrottle(
+    const Duration(milliseconds: 33),
+  );
   bool _disposed = false;
   bool _trayAvailable = true;
 
@@ -133,8 +135,9 @@ class DesktopHost with TrayListener, WindowListener {
     var trayAvailable = !Platform.isWindows || arguments.role != WindowRole.pet;
     final startupWarnings = <String>[];
     if (Platform.isWindows && arguments.role == WindowRole.pet) {
-      const MethodChannel('ass_timer/power_events_windows')
-          .setMethodCallHandler((call) async {
+      const MethodChannel(
+        'ass_timer/power_events_windows',
+      ).setMethodCallHandler((call) async {
         if (call.method == 'powerEvent' && call.arguments is String) {
           _windowsPowerEvents.add(call.arguments as String);
         }
@@ -262,10 +265,7 @@ class DesktopHost with TrayListener, WindowListener {
     }
   }
 
-  Future<void> openControlCenter(
-    ControlRoute route, {
-    String? groupId,
-  }) async {
+  Future<void> openControlCenter(ControlRoute route, {String? groupId}) async {
     final existing = _windowForRoute(route);
     if (existing != null) {
       try {
@@ -280,10 +280,49 @@ class DesktopHost with TrayListener, WindowListener {
         _setWindowForRoute(route, null);
       }
     }
+    final controller = await _ensureControlWindow(route);
+    if (groupId != null) {
+      await controller.invokeMethod<void>('navigate', <String, dynamic>{
+        'route': route.name,
+        'groupId': groupId,
+      });
+    }
+    await controller.show();
+  }
+
+  Future<void> prewarmControlCenter(ControlRoute route) async {
+    if (_windowForRoute(route) != null) return;
+    try {
+      await _ensureControlWindow(route);
+    } on Object catch (error, stack) {
+      await CrashReporter.instance.record(
+        error,
+        stack,
+        context: 'prewarm_control_center',
+      );
+    }
+  }
+
+  Future<WindowController> _ensureControlWindow(ControlRoute route) async {
+    final existing = _windowForRoute(route);
+    if (existing != null) return existing;
+    if (route == ControlRoute.chat && _chatWindowCreation != null) {
+      return _chatWindowCreation!;
+    }
+
+    final creation = _createControlWindow(route);
+    if (route == ControlRoute.chat) _chatWindowCreation = creation;
+    try {
+      return await creation;
+    } finally {
+      if (route == ControlRoute.chat) _chatWindowCreation = null;
+    }
+  }
+
+  Future<WindowController> _createControlWindow(ControlRoute route) async {
     final args = WindowLaunchArguments(
       role: WindowRole.controlCenter,
       route: route,
-      groupId: groupId,
       rootWindowId: _currentWindow?.windowId,
     );
     final controller = await WindowController.create(
@@ -291,7 +330,7 @@ class DesktopHost with TrayListener, WindowListener {
     );
     _setWindowForRoute(route, controller);
     _children.add(controller);
-    await controller.show();
+    return controller;
   }
 
   Future<void> showBubble() async {
@@ -441,10 +480,7 @@ class DesktopHost with TrayListener, WindowListener {
       await windowManager.setSize(size);
     }
     final maxY = visiblePosition.dy + visibleSize.height - size.height;
-    position = Offset(
-      position.dx,
-      position.dy.clamp(visiblePosition.dy, maxY),
-    );
+    position = Offset(position.dx, position.dy.clamp(visiblePosition.dy, maxY));
     await windowManager.setPosition(position, animate: side != null);
     return (position: position, dockSide: side);
   }
@@ -518,14 +554,13 @@ class DesktopHost with TrayListener, WindowListener {
       await windowManager.setResizable(false);
       await windowManager.setSize(const Size(680, 365));
       await windowManager.center();
+      await windowManager.show();
       await windowManager.focus();
     } else {
       await windowManager.setSize(const Size(224, 200));
       await windowManager.setResizable(false);
       await windowManager.setAsFrameless();
-      await windowManager.setSkipTaskbar(
-        !Platform.isWindows || _trayAvailable,
-      );
+      await windowManager.setSkipTaskbar(!Platform.isWindows || _trayAvailable);
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setVisibleOnAllWorkspaces(
         true,
@@ -604,8 +639,9 @@ class DesktopHost with TrayListener, WindowListener {
         current != null &&
         rootId != null) {
       try {
-        await WindowController.fromWindowId(rootId)
-            .invokeMethod<void>('childClosed', current.windowId);
+        await WindowController.fromWindowId(
+          rootId,
+        ).invokeMethod<void>('childClosed', current.windowId);
       } on Object catch (error, stack) {
         await CrashReporter.instance.record(
           error,
@@ -633,8 +669,9 @@ class DesktopHost with TrayListener, WindowListener {
     windowManager.removeListener(this);
     await _currentWindow?.setWindowMethodHandler(null);
     if (Platform.isWindows && launchArguments.role == WindowRole.pet) {
-      const MethodChannel('ass_timer/power_events_windows')
-          .setMethodCallHandler(null);
+      const MethodChannel(
+        'ass_timer/power_events_windows',
+      ).setMethodCallHandler(null);
       trayManager.removeListener(this);
     }
     await _windowsPowerEvents.close();
@@ -683,7 +720,7 @@ class DesktopHost with TrayListener, WindowListener {
         ControlRoute.groups ||
         ControlRoute.media ||
         ControlRoute.about =>
-          const Size(420, 440),
+          const Size(420, 468),
       };
 
   Future<void> _resizeControlWindow(ControlRoute route) async {
@@ -697,7 +734,14 @@ class DesktopHost with TrayListener, WindowListener {
       ControlRoute.chat => '群聊',
       ControlRoute.leaderboard => '排行榜',
     };
-    await windowManager.setTitle(title);
+    final settingsRoute = route == ControlRoute.timer ||
+        route == ControlRoute.groups ||
+        route == ControlRoute.media ||
+        route == ControlRoute.about;
+    await windowManager.setTitle(settingsRoute ? '' : title);
+    await windowManager.setTitleBarStyle(
+      settingsRoute ? TitleBarStyle.hidden : TitleBarStyle.normal,
+    );
     await windowManager.setMinimumSize(
       route == ControlRoute.chat
           ? const Size(560, 380)

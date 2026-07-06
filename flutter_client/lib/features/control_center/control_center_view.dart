@@ -1,9 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:ass_timer_flutter/application/app_controller.dart';
-import 'package:ass_timer_flutter/core/diagnostics/crash_reporter.dart';
 import 'package:ass_timer_flutter/core/theme/app_theme.dart';
-import 'package:ass_timer_flutter/core/widgets/responsive_collection.dart';
 import 'package:ass_timer_flutter/data/api_models.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:ass_timer_flutter/features/onboarding/circular_interval_picker.dart';
@@ -13,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:window_manager/window_manager.dart';
 
 class ControlCenterView extends ConsumerStatefulWidget {
   const ControlCenterView({super.key, this.initialRoute});
@@ -65,24 +65,25 @@ class _ControlCenterViewState extends ConsumerState<ControlCenterView> {
                 if (controller.snapshot.lastError != null)
                   MaterialBanner(
                     content: Text(controller.snapshot.lastError!),
-                    leading: const Icon(Icons.error_outline,
-                        color: AppColors.danger),
+                    leading: const Icon(
+                      Icons.error_outline,
+                      color: AppColors.danger,
+                    ),
                     actions: const <Widget>[SizedBox.shrink()],
                   ),
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: switch (route) {
-                      ControlRoute.timer => _TimerPane(controller: controller),
-                      ControlRoute.groups =>
-                        _GroupsPane(controller: controller),
-                      ControlRoute.media => _MediaPane(controller: controller),
-                      ControlRoute.about => _AboutPane(controller: controller),
-                      ControlRoute.chat ||
-                      ControlRoute.leaderboard =>
-                        const SizedBox.shrink(),
-                    },
-                  ),
+                  child: switch (route) {
+                    ControlRoute.timer => _TimerPane(controller: controller),
+                    ControlRoute.groups => Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: _GroupsPane(controller: controller),
+                      ),
+                    ControlRoute.media => _MediaPane(controller: controller),
+                    ControlRoute.about => _AboutPane(controller: controller),
+                    ControlRoute.chat ||
+                    ControlRoute.leaderboard =>
+                      const SizedBox.shrink(),
+                  },
                 ),
               ],
             ),
@@ -115,44 +116,64 @@ class _SecondaryWindowScaffold extends StatelessWidget {
                 leading: const Icon(Icons.wifi_off, color: AppColors.danger),
                 actions: const <Widget>[SizedBox.shrink()],
               ),
-            Expanded(child: Padding(padding: padding, child: child)),
+            Expanded(
+              child: Padding(padding: padding, child: child),
+            ),
           ],
         ),
       );
 }
 
 class _SettingsTabBar extends StatelessWidget {
-  const _SettingsTabBar({
-    required this.selected,
-    required this.onSelected,
-  });
+  const _SettingsTabBar({required this.selected, required this.onSelected});
 
   final ControlRoute selected;
   final ValueChanged<ControlRoute> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    const entries = <(ControlRoute, IconData, String)>[
-      (ControlRoute.timer, Icons.notifications_outlined, '提醒'),
-      (ControlRoute.groups, Icons.groups_outlined, '群组'),
-      (ControlRoute.media, Icons.photo_library_outlined, '素材'),
-      (ControlRoute.about, Icons.info_outline, '关于'),
+    const entries = <(ControlRoute, String)>[
+      (ControlRoute.timer, '提醒'),
+      (ControlRoute.groups, '群组'),
+      (ControlRoute.media, '素材'),
+      (ControlRoute.about, '关于'),
     ];
     return ColoredBox(
-      color: AppColors.sidebar,
+      color: Colors.white,
       child: SizedBox(
-        height: 58,
-        child: Row(
+        height: 52,
+        child: Stack(
           children: <Widget>[
-            for (final entry in entries)
-              Expanded(
-                child: _SettingsTabButton(
-                  icon: entry.$2,
-                  label: entry.$3,
-                  selected: selected == entry.$1,
-                  onPressed: () => onSelected(entry.$1),
+            const Positioned.fill(child: DragToMoveArea(child: SizedBox())),
+            Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.035),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      for (var index = 0; index < entries.length; index++) ...[
+                        if (index > 0)
+                          Container(
+                            width: 1,
+                            height: 18,
+                            color: Colors.black.withValues(alpha: 0.07),
+                          ),
+                        _SettingsTabButton(
+                          label: entries[index].$2,
+                          selected: selected == entries[index].$1,
+                          onPressed: () => onSelected(entries[index].$1),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
+            ),
           ],
         ),
       ),
@@ -162,13 +183,11 @@ class _SettingsTabBar extends StatelessWidget {
 
 class _SettingsTabButton extends StatelessWidget {
   const _SettingsTabButton({
-    required this.icon,
     required this.label,
     required this.selected,
     required this.onPressed,
   });
 
-  final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onPressed;
@@ -180,22 +199,27 @@ class _SettingsTabButton extends StatelessWidget {
         label: label,
         child: InkWell(
           onTap: onPressed,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Icon(icon,
-                  size: 19,
-                  color: selected ? AppColors.accent : AppColors.secondaryText),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
-                  color: selected ? AppColors.accent : AppColors.text,
-                ),
+          borderRadius: BorderRadius.circular(17),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            height: 32,
+            constraints: const BoxConstraints(minWidth: 54),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected
+                  ? Colors.black.withValues(alpha: 0.075)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(17),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? AppColors.text : AppColors.secondaryText,
               ),
-            ],
+            ),
           ),
         ),
       );
@@ -259,30 +283,30 @@ class _TimerPaneState extends State<_TimerPane> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const _PaneTitle('提醒设置', subtitle: '使用绝对时间调度，电脑休眠后仍会按计划提醒。'),
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  CircularIntervalPicker(
-                    seconds: seconds,
-                    onChanged: (value) => setState(() => seconds = value),
-                  ),
-                  const SizedBox(height: 24),
-                  FilledButton.icon(
-                    onPressed: _save,
-                    icon: Icon(saved ? Icons.check : Icons.save_outlined),
-                    label: Text(saved ? '已保存' : '保存设置'),
-                  ),
-                ],
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          children: <Widget>[
+            const Spacer(),
+            CircularIntervalPicker(
+              seconds: seconds,
+              onChanged: (value) => setState(() => seconds = value),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _save,
+                icon: Icon(
+                  saved ? Icons.check : Icons.arrow_circle_down_outlined,
+                  size: 17,
+                ),
+                label: Text(saved ? '已保存' : '保存设置'),
               ),
             ),
-          ),
-        ],
+            const Spacer(),
+          ],
+        ),
       );
 }
 
@@ -314,7 +338,8 @@ class _GroupsPaneState extends State<_GroupsPane> {
           Row(
             children: <Widget>[
               const Expanded(
-                  child: _PaneTitle('群组', subtitle: '创建或加入多个群组，完成记录会同步到所有群组。')),
+                child: _PaneTitle('群组', subtitle: '创建或加入多个群组，完成记录会同步到所有群组。'),
+              ),
               IconButton(
                 tooltip: '刷新群组',
                 onPressed: widget.controller.refreshGroups,
@@ -344,7 +369,8 @@ class _GroupsPaneState extends State<_GroupsPane> {
                             }
                           }),
                           leading: const CircleAvatar(
-                              child: Icon(Icons.groups_outlined, size: 19)),
+                            child: Icon(Icons.groups_outlined, size: 19),
+                          ),
                           title: Text(
                             group.name.isEmpty ? '未命名群组' : group.name,
                             style: const TextStyle(fontWeight: FontWeight.w500),
@@ -356,10 +382,13 @@ class _GroupsPaneState extends State<_GroupsPane> {
                             const Divider(),
                             Row(
                               children: <Widget>[
-                                const Text('邀请码',
-                                    style: TextStyle(
-                                        color: AppColors.secondaryText,
-                                        fontSize: 12)),
+                                const Text(
+                                  '邀请码',
+                                  style: TextStyle(
+                                    color: AppColors.secondaryText,
+                                    fontSize: 12,
+                                  ),
+                                ),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Wrap(
@@ -402,9 +431,10 @@ class _GroupsPaneState extends State<_GroupsPane> {
                               const SizedBox(height: 8),
                               Align(
                                 alignment: Alignment.centerLeft,
-                                child: Text('成员',
-                                    style:
-                                        Theme.of(context).textTheme.bodySmall),
+                                child: Text(
+                                  '成员',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
                               ),
                               const SizedBox(height: 4),
                               for (final member in group.members)
@@ -415,9 +445,10 @@ class _GroupsPaneState extends State<_GroupsPane> {
                                     children: <Widget>[
                                       CircleAvatar(
                                         radius: 11,
-                                        child: Text(member.petEmoji,
-                                            style:
-                                                const TextStyle(fontSize: 11)),
+                                        child: Text(
+                                          member.petEmoji,
+                                          style: const TextStyle(fontSize: 11),
+                                        ),
                                       ),
                                       const SizedBox(width: 8),
                                       Text(member.nickname),
@@ -425,10 +456,13 @@ class _GroupsPaneState extends State<_GroupsPane> {
                                           widget.controller.snapshot.config
                                               .userId) ...<Widget>[
                                         const SizedBox(width: 6),
-                                        const Text('我',
-                                            style: TextStyle(
-                                                color: AppColors.accent,
-                                                fontSize: 11)),
+                                        const Text(
+                                          '我',
+                                          style: TextStyle(
+                                            color: AppColors.accent,
+                                            fontSize: 11,
+                                          ),
+                                        ),
                                       ],
                                     ],
                                   ),
@@ -439,8 +473,10 @@ class _GroupsPaneState extends State<_GroupsPane> {
                               alignment: Alignment.centerRight,
                               child: TextButton(
                                 onPressed: () => _confirmLeave(group),
-                                child: const Text('退出群组',
-                                    style: TextStyle(color: AppColors.danger)),
+                                child: const Text(
+                                  '退出群组',
+                                  style: TextStyle(color: AppColors.danger),
+                                ),
                               ),
                             ),
                           ],
@@ -452,14 +488,16 @@ class _GroupsPaneState extends State<_GroupsPane> {
           Row(
             children: <Widget>[
               FilledButton.icon(
-                  onPressed: _showCreate,
-                  icon: const Icon(Icons.add),
-                  label: const Text('创建群组')),
+                onPressed: _showCreate,
+                icon: const Icon(Icons.add),
+                label: const Text('创建群组'),
+              ),
               const SizedBox(width: 10),
               OutlinedButton.icon(
-                  onPressed: _showJoin,
-                  icon: const Icon(Icons.login),
-                  label: const Text('加入群组')),
+                onPressed: _showJoin,
+                icon: const Icon(Icons.login),
+                label: const Text('加入群组'),
+              ),
             ],
           ),
         ],
@@ -491,12 +529,15 @@ class _GroupsPaneState extends State<_GroupsPane> {
       builder: (context) => AlertDialog(
         title: Text(title),
         content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: InputDecoration(labelText: label)),
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(labelText: label),
+        ),
         actions: <Widget>[
           TextButton(
-              onPressed: Navigator.of(context).pop, child: const Text('取消')),
+            onPressed: Navigator.of(context).pop,
+            child: const Text('取消'),
+          ),
           FilledButton(
             onPressed: () async {
               try {
@@ -521,11 +562,13 @@ class _GroupsPaneState extends State<_GroupsPane> {
         content: Text('确定退出“${group.name}”吗？'),
         actions: <Widget>[
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('退出')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('退出'),
+          ),
         ],
       ),
     );
@@ -545,6 +588,8 @@ class _ChatPane extends StatefulWidget {
 
 class _ChatPaneState extends State<_ChatPane> {
   final input = TextEditingController();
+  String? requestedGroupId;
+  bool sending = false;
 
   @override
   void dispose() {
@@ -557,9 +602,11 @@ class _ChatPaneState extends State<_ChatPane> {
     final joined = widget.controller.snapshot.config.joinedGroups;
     final selected =
         widget.controller.activeChatGroupId ?? joined.firstOrNull?.groupId;
-    if (selected != null && widget.controller.activeChatGroupId == null) {
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => widget.controller.loadChat(selected));
+    if (selected != null && requestedGroupId != selected) {
+      requestedGroupId = selected;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(widget.controller.loadChat(selected));
+      });
     }
     final messages =
         widget.controller.chatMessages[selected] ?? <ChatMessage>[];
@@ -619,14 +666,15 @@ class _ChatPaneState extends State<_ChatPane> {
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(7),
                                 ),
-                                title: Text(group.groupName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
+                                title: Text(
+                                  group.groupName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                                 trailing: unread > 0
                                     ? Badge(label: Text('$unread'))
                                     : null,
-                                onTap: () =>
-                                    widget.controller.loadChat(group.groupId),
+                                onTap: () => _loadGroup(group.groupId),
                               ),
                             );
                           },
@@ -639,7 +687,9 @@ class _ChatPaneState extends State<_ChatPane> {
                         children: <Widget>[
                           Padding(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                             child: Row(
                               children: <Widget>[
                                 Expanded(
@@ -648,14 +698,16 @@ class _ChatPaneState extends State<_ChatPane> {
                                         selectedJoinedGroup?.groupName ??
                                         '群聊',
                                     style: const TextStyle(
-                                        fontWeight: FontWeight.w500),
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
                                 ),
                                 if (selectedGroup != null)
                                   Text(
                                     '${selectedGroup.members.length} 人',
-                                    style:
-                                        Theme.of(context).textTheme.bodySmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
                                   ),
                                 const SizedBox(width: 8),
                                 _ConnectionBadge(
@@ -667,7 +719,8 @@ class _ChatPaneState extends State<_ChatPane> {
                                   OutlinedButton.icon(
                                     onPressed: () => Clipboard.setData(
                                       ClipboardData(
-                                          text: selectedGroup.inviteCode),
+                                        text: selectedGroup.inviteCode,
+                                      ),
                                     ),
                                     icon: const Icon(Icons.numbers, size: 15),
                                     label: const Text('邀请码'),
@@ -681,47 +734,19 @@ class _ChatPaneState extends State<_ChatPane> {
                                 ? const Center(child: Text('还没有消息'))
                                 : ListView.builder(
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 8),
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
                                     itemCount: messages.length,
                                     itemBuilder: (context, index) {
                                       final message = messages[index];
                                       final own = message.userId ==
                                           widget.controller.snapshot.config
                                               .userId;
-                                      return Align(
-                                        alignment: own
-                                            ? Alignment.centerRight
-                                            : Alignment.centerLeft,
-                                        child: Container(
-                                          constraints: const BoxConstraints(
-                                              maxWidth: 360),
-                                          margin: const EdgeInsets.symmetric(
-                                              vertical: 4),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 11, vertical: 7),
-                                          decoration: BoxDecoration(
-                                            color: own
-                                                ? AppColors.accentSoft
-                                                : AppColors.muted,
-                                            borderRadius:
-                                                BorderRadius.circular(9),
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: <Widget>[
-                                              if (!own)
-                                                Text(
-                                                  message.nickname,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w500,
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                              Text(message.content),
-                                            ],
-                                          ),
-                                        ),
+                                      return _ChatMessageRow(
+                                        controller: widget.controller,
+                                        message: message,
+                                        own: own,
                                       );
                                     },
                                   ),
@@ -744,9 +769,18 @@ class _ChatPaneState extends State<_ChatPane> {
                                 ),
                                 const SizedBox(width: 8),
                                 IconButton.filled(
-                                  tooltip: '发送消息',
-                                  onPressed: () => _send(selected),
-                                  icon: const Icon(Icons.send, size: 18),
+                                  tooltip: sending ? '正在发送' : '发送消息',
+                                  onPressed: selected == null || sending
+                                      ? null
+                                      : () => _send(selected),
+                                  icon: sending
+                                      ? const SizedBox.square(
+                                          dimension: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(Icons.send, size: 18),
                                 ),
                               ],
                             ),
@@ -767,8 +801,178 @@ class _ChatPaneState extends State<_ChatPane> {
     if (groupId == null || input.text.trim().isEmpty) return;
     final content = input.text;
     input.clear();
-    await widget.controller.sendChat(groupId, content);
+    setState(() => sending = true);
+    try {
+      await widget.controller.sendChat(groupId, content);
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
   }
+
+  void _loadGroup(String groupId) {
+    if (requestedGroupId == groupId) return;
+    setState(() => requestedGroupId = groupId);
+    unawaited(widget.controller.loadChat(groupId));
+  }
+}
+
+class _ChatMessageRow extends StatelessWidget {
+  const _ChatMessageRow({
+    required this.controller,
+    required this.message,
+    required this.own,
+  });
+
+  final AppController controller;
+  final ChatMessage message;
+  final bool own;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatar = _UserAvatar(
+      controller: controller,
+      avatarUrl: message.avatarUrl,
+      fallback: message.petEmoji,
+    );
+    final bubble = Flexible(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 360),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        decoration: BoxDecoration(
+          color: own ? AppColors.accentSoft : AppColors.muted,
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Flexible(
+                  child: Text(
+                    own ? '我' : message.nickname,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _formatMessageTime(message.createdAt),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontSize: 10,
+                    color: AppColors.secondaryText,
+                    fontFeatures: const <FontFeature>[
+                      FontFeature.tabularFigures(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(message.content),
+          ],
+        ),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment:
+            own ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: own
+            ? <Widget>[bubble, const SizedBox(width: 7), avatar]
+            : <Widget>[avatar, const SizedBox(width: 7), bubble],
+      ),
+    );
+  }
+}
+
+class _UserAvatar extends StatefulWidget {
+  const _UserAvatar({
+    required this.controller,
+    required this.avatarUrl,
+    required this.fallback,
+    this.size = 30,
+  });
+
+  final AppController controller;
+  final String avatarUrl;
+  final String fallback;
+  final double size;
+
+  @override
+  State<_UserAvatar> createState() => _UserAvatarState();
+}
+
+class _UserAvatarState extends State<_UserAvatar> {
+  Future<String?>? pathFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshPath();
+  }
+
+  @override
+  void didUpdateWidget(covariant _UserAvatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.avatarUrl != widget.avatarUrl) _refreshPath();
+  }
+
+  void _refreshPath() {
+    pathFuture = widget.avatarUrl.trim().isEmpty
+        ? null
+        : widget.controller.cachedAvatarPath(widget.avatarUrl);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fallbackWidget = Center(
+      child: Text(
+        widget.fallback,
+        style: TextStyle(fontSize: widget.size * 0.5),
+      ),
+    );
+    return Semantics(
+      image: true,
+      label: '用户头像',
+      child: ClipOval(
+        child: ColoredBox(
+          color: AppColors.accentSoft,
+          child: SizedBox.square(
+            dimension: widget.size,
+            child: pathFuture == null
+                ? fallbackWidget
+                : FutureBuilder<String?>(
+                    future: pathFuture,
+                    builder: (context, snapshot) {
+                      final path = snapshot.data;
+                      return path == null
+                          ? fallbackWidget
+                          : Image.file(
+                              File(path),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => fallbackWidget,
+                            );
+                    },
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _formatMessageTime(DateTime value) {
+  final local = value.toLocal();
+  String twoDigits(int number) => number.toString().padLeft(2, '0');
+  return '${twoDigits(local.month)}-${twoDigits(local.day)} '
+      '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
 }
 
 class _ConnectionBadge extends StatelessWidget {
@@ -821,11 +1025,16 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
   void _selectGroup(String groupId) {
     setState(() => selected = groupId);
     loadedGroup = groupId;
-    unawaited(widget.controller.refreshLeaderboard(groupId));
+    unawaited(_refresh(groupId));
     refreshTimer?.cancel();
     refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      unawaited(widget.controller.refreshLeaderboard(groupId));
+      unawaited(_refresh(groupId));
     });
+  }
+
+  Future<void> _refresh(String groupId) async {
+    await widget.controller.refreshLeaderboard(groupId);
+    if (widget.controller.leaderboardError != null) refreshTimer?.cancel();
   }
 
   @override
@@ -846,18 +1055,25 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
             children: <Widget>[
               const Icon(Icons.emoji_events, color: Color(0xFFD99A00)),
               const SizedBox(width: 7),
-              const Text('排行榜',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              const Text(
+                '排行榜',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
               const Spacer(),
               if (groups.isNotEmpty && selected != null)
                 DropdownButton<String>(
                   value: selected,
                   underline: const SizedBox.shrink(),
                   items: groups
-                      .map((group) => DropdownMenuItem(
+                      .map(
+                        (group) => DropdownMenuItem(
                           value: group.groupId,
-                          child: Text(group.groupName,
-                              overflow: TextOverflow.ellipsis)))
+                          child: Text(
+                            group.groupName,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
                       .toList(),
                   onChanged: (value) {
                     if (value != null) _selectGroup(value);
@@ -882,8 +1098,12 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
               DropdownButton<String>(
                 value: selected,
                 items: groups
-                    .map((group) => DropdownMenuItem(
-                        value: group.groupId, child: Text(group.groupName)))
+                    .map(
+                      (group) => DropdownMenuItem(
+                        value: group.groupId,
+                        child: Text(group.groupName),
+                      ),
+                    )
                     .toList(),
                 onChanged: (value) {
                   if (value != null) _selectGroup(value);
@@ -901,55 +1121,100 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
         if (groups.isNotEmpty) ...<Widget>[
           const SizedBox(height: 12),
           Expanded(
-            child: widget.controller.leaderboard.isEmpty
-                ? const Center(child: Text('暂无数据'))
-                : ListView.separated(
-                    itemCount: widget.controller.leaderboard.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final entry = widget.controller.leaderboard[index];
-                      final own = entry.userId ==
-                          widget.controller.snapshot.config.userId;
-                      final medal = switch (entry.rank) {
-                        1 => '🥇',
-                        2 => '🥈',
-                        3 => '🥉',
-                        _ => '${entry.rank}',
-                      };
-                      return Container(
-                        decoration: BoxDecoration(
-                          color:
-                              own ? AppColors.accentSoft : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: ListTile(
-                          leading: SizedBox(
-                            width: 40,
-                            child: Text(
-                              medal,
-                              style: TextStyle(
-                                fontSize: entry.rank <= 3 ? 22 : 16,
-                                fontWeight: FontWeight.w700,
-                              ),
+            child: widget.controller.leaderboardLoading
+                ? const Center(child: CircularProgressIndicator())
+                : widget.controller.leaderboardError != null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            const Icon(
+                              Icons.wifi_off_outlined,
+                              color: AppColors.secondaryText,
                             ),
-                          ),
-                          title: Text(
-                            entry.nickname,
-                            style: TextStyle(
-                              fontWeight:
-                                  own ? FontWeight.w700 : FontWeight.w400,
+                            const SizedBox(height: 8),
+                            Text(widget.controller.leaderboardError!),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: selected == null
+                                  ? null
+                                  : () => _selectGroup(selected!),
+                              icon: const Icon(Icons.refresh, size: 17),
+                              label: const Text('重试'),
                             ),
-                          ),
-                          trailing: Text('${entry.count} 次',
-                              style: const TextStyle(
-                                  color: AppColors.secondaryText,
-                                  fontFeatures: <FontFeature>[
-                                    FontFeature.tabularFigures()
-                                  ])),
+                          ],
                         ),
-                      );
-                    },
-                  ),
+                      )
+                    : widget.controller.leaderboard.isEmpty
+                        ? const Center(child: Text('暂无数据'))
+                        : ListView.separated(
+                            itemCount: widget.controller.leaderboard.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final entry =
+                                  widget.controller.leaderboard[index];
+                              final own = entry.userId ==
+                                  widget.controller.snapshot.config.userId;
+                              final medal = switch (entry.rank) {
+                                1 => '🥇',
+                                2 => '🥈',
+                                3 => '🥉',
+                                _ => '${entry.rank}',
+                              };
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: own
+                                      ? AppColors.accentSoft
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: ListTile(
+                                  leading: SizedBox(
+                                    width: 72,
+                                    child: Row(
+                                      children: <Widget>[
+                                        SizedBox(
+                                          width: 32,
+                                          child: Text(
+                                            medal,
+                                            style: TextStyle(
+                                              fontSize:
+                                                  entry.rank <= 3 ? 22 : 16,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                        _UserAvatar(
+                                          controller: widget.controller,
+                                          avatarUrl: entry.avatarUrl,
+                                          fallback: entry.petEmoji,
+                                          size: 30,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  title: Text(
+                                    entry.nickname,
+                                    style: TextStyle(
+                                      fontWeight: own
+                                          ? FontWeight.w700
+                                          : FontWeight.w400,
+                                    ),
+                                  ),
+                                  trailing: Text(
+                                    '${entry.count} 次',
+                                    style: const TextStyle(
+                                      color: AppColors.secondaryText,
+                                      fontFeatures: <FontFeature>[
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
           ),
           const Divider(height: 1),
           Padding(
@@ -972,36 +1237,39 @@ class _MediaPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const slots = <(String, String, IconData)>[
-      ('reminder', '提醒', Icons.notifications_active_outlined),
-      ('completion', '完成', Icons.check_circle_outline),
-      ('nap', '睡觉', Icons.bedtime_outlined),
-      ('interaction', '单击互动', Icons.touch_app_outlined),
-      ('obedientPet', '听话模式宠物', Icons.push_pin_outlined),
-      ('docked', '吸附边缘', Icons.dock_outlined),
+    const slots = <(String, String, String, String)>[
+      ('reminder', '提醒', '提醒出现时', 'assets/sprites/停止.png'),
+      ('completion', '完成', '完成提肛后', 'assets/sprites/得意.png'),
+      ('nap', '睡觉', '宠物趴下时', 'assets/sprites/趴.png'),
+      ('interaction', '单击互动', '单击宠物后', 'assets/sprites/愤怒.png'),
+      ('obedientPet', '听话模式宠物', '听话模式开启时', 'assets/sprites/得意.png'),
+      ('docked', '吸附边缘', '吸附到屏幕边缘时', 'assets/sprites/后视镜.png'),
     ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        const _PaneTitle('动作素材', subtitle: '可为不同宠物状态选择本地照片，照片不会上传。'),
-        if (!controller.supportsBackgroundRemoval)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 12),
-            child: Text('当前系统不支持本地去背景；普通照片裁剪与显示仍可使用。',
-                style: TextStyle(color: AppColors.secondaryText)),
-          ),
-        Expanded(
-          child: ResponsiveCollection(
-            itemCount: slots.length,
-            itemBuilder: (context, index, singleColumn) => _MediaSlotCard(
-              controller: controller,
-              slot: slots[index],
-              compact: singleColumn,
-              onChoosePhoto: _choosePhoto,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const _PaneTitle('动作素材', subtitle: '为不同动作设置照片；未设置时显示默认素材。'),
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.only(bottom: 14),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 1.12,
+              ),
+              itemCount: slots.length,
+              itemBuilder: (context, index) => _MediaSlotCard(
+                controller: controller,
+                slot: slots[index],
+                onChoosePhoto: _choosePhoto,
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1020,145 +1288,229 @@ class _MediaSlotCard extends StatelessWidget {
   const _MediaSlotCard({
     required this.controller,
     required this.slot,
-    required this.compact,
     required this.onChoosePhoto,
   });
 
   final AppController controller;
-  final (String, String, IconData) slot;
-  final bool compact;
+  final (String, String, String, String) slot;
   final Future<void> Function(String slot) onChoosePhoto;
 
   @override
   Widget build(BuildContext context) {
     final entry = controller.snapshot.config.customActionMedia[slot.$1];
-    final content = <Widget>[
-      Icon(slot.$3, color: AppColors.accent),
-      const SizedBox(height: 10),
-      Text(slot.$2, style: const TextStyle(fontWeight: FontWeight.w500)),
-      Text(
-        entry == null ? '默认素材' : '已设置自定义照片',
-        style: Theme.of(context).textTheme.bodySmall,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.035),
+        borderRadius: BorderRadius.circular(11),
       ),
-      if (entry != null && controller.supportsBackgroundRemoval)
-        CheckboxListTile(
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          title: const Text('去除背景', style: TextStyle(fontSize: 12)),
-          value: entry.removesBackground,
-          onChanged: (value) => controller.setBackgroundRemoval(
-            slot.$1,
-            value ?? false,
-          ),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _MediaPreview(
+              controller: controller,
+              entry: entry,
+              fallbackAsset: slot.$4,
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    slot.$2,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (entry?.removesBackground == true)
+                  const Icon(
+                    Icons.auto_fix_high,
+                    size: 13,
+                    color: AppColors.accent,
+                  )
+                else if (entry == null)
+                  const Text(
+                    '默认',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: AppColors.secondaryText,
+                    ),
+                  ),
+              ],
+            ),
+            Text(
+              slot.$3,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const Spacer(),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => onChoosePhoto(slot.$1),
+                    style: _mediaActionButtonStyle,
+                    child: const Text('选择'),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  flex: 2,
+                  child: OutlinedButton(
+                    onPressed: entry == null ||
+                            entry.removesBackground ||
+                            !controller.supportsBackgroundRemoval
+                        ? null
+                        : () => controller.setBackgroundRemoval(
+                              slot.$1,
+                              true,
+                            ),
+                    style: _mediaActionButtonStyle,
+                    child: const Text('去除背景'),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: entry == null
+                        ? null
+                        : () => controller.removeCustomMedia(slot.$1),
+                    style: _mediaActionButtonStyle,
+                    child: const Text('重置'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
-      if (!compact) const Spacer() else const SizedBox(height: 12),
-      Row(
-        children: <Widget>[
-          Expanded(
-            child: OutlinedButton(
-              onPressed: () => onChoosePhoto(slot.$1),
-              child: Text(entry == null ? '选择照片…' : '更换…'),
-            ),
-          ),
-          if (entry != null)
-            IconButton(
-              tooltip: '恢复默认',
-              onPressed: () => controller.removeCustomMedia(slot.$1),
-              icon: const Icon(Icons.restore, size: 18),
-            ),
-        ],
-      ),
-    ];
-    return AppCard(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: content,
       ),
     );
   }
+
+  ButtonStyle get _mediaActionButtonStyle => OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 30),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        textStyle: const TextStyle(fontSize: 11),
+        visualDensity: VisualDensity.compact,
+      );
 }
 
-class _AboutPane extends StatelessWidget {
+class _MediaPreview extends StatelessWidget {
+  const _MediaPreview({
+    required this.controller,
+    required this.entry,
+    required this.fallbackAsset,
+  });
+
+  final AppController controller;
+  final CustomActionMediaEntry? entry;
+  final String fallbackAsset;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 76,
+        width: double.infinity,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.035),
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+        ),
+        child: entry == null
+            ? Image.asset(fallbackAsset, fit: BoxFit.contain)
+            : FutureBuilder<String?>(
+                future: controller.customMediaPreviewPath(entry!),
+                builder: (context, snapshot) {
+                  final path = snapshot.data;
+                  return path == null
+                      ? Image.asset(fallbackAsset, fit: BoxFit.contain)
+                      : Image.file(
+                          File(path),
+                          key: ValueKey(entry!.revision),
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) =>
+                              Image.asset(fallbackAsset, fit: BoxFit.contain),
+                        );
+                },
+              ),
+      );
+}
+
+class _AboutPane extends StatefulWidget {
   const _AboutPane({required this.controller});
 
   final AppController controller;
 
   @override
+  State<_AboutPane> createState() => _AboutPaneState();
+}
+
+class _AboutPaneState extends State<_AboutPane> {
+  AppController get controller => widget.controller;
+
+  late final Future<PackageInfo> packageInfo = PackageInfo.fromPlatform();
+  bool uploadingAvatar = false;
+  bool clearing = false;
+
+  @override
   Widget build(BuildContext context) => FutureBuilder<PackageInfo>(
-        future: PackageInfo.fromPlatform(),
-        builder: (context, snapshot) => SingleChildScrollView(
+        future: packageInfo,
+        builder: (context, snapshot) => Padding(
+          padding: const EdgeInsets.all(16),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const _PaneTitle('关于'),
-              Row(
-                children: <Widget>[
-                  Container(
-                    width: 48,
-                    height: 48,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.muted,
-                      borderRadius: BorderRadius.circular(11),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: const Text('🦌', style: TextStyle(fontSize: 28)),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      const Text('该提肛了',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w500)),
-                      Text(
-                        '版本 ${snapshot.data?.version ?? '2.0.0'} (${snapshot.data?.buildNumber ?? '1'})',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
               AppCard(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                padding: const EdgeInsets.all(12),
+                child: Row(
                   children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        CircleAvatar(
-                          radius: 24,
-                          child: Text(controller.snapshot.config.petEmoji,
-                              style: const TextStyle(fontSize: 24)),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                controller.snapshot.config.nickname ?? '未设置昵称',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w500),
-                              ),
-                              Text(
-                                '累计${controller.exerciseName} ${controller.snapshot.config.localEventCount} 次',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
+                    _UserAvatar(
+                      controller: controller,
+                      avatarUrl: controller.snapshot.config.avatarUrl ?? '',
+                      fallback: controller.snapshot.config.petEmoji,
+                      size: 48,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            controller.snapshot.config.nickname ?? '未设置昵称',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                      ],
+                          Text(
+                            '账户头像',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    OutlinedButton(
+                      onPressed: uploadingAvatar ? null : _chooseAvatar,
+                      child: uploadingAvatar
+                          ? const SizedBox.square(
+                              dimension: 13,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('选择'),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
               AppCard(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
@@ -1166,23 +1518,28 @@ class _AboutPane extends StatelessWidget {
                       children: <Widget>[
                         Icon(
                           controller.availableUpdate == null
-                              ? Icons.info_outline
+                              ? Icons.check_circle
                               : Icons.system_update_alt,
                           size: 18,
                           color: controller.availableUpdate == null
-                              ? AppColors.secondaryText
+                              ? const Color(0xFF32C759)
                               : Colors.orange,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             controller.availableUpdate == null
-                                ? '尚未发现新版本'
+                                ? '已是最新版本'
                                 : '发现新版本 ${controller.availableUpdate!.latestVersion}',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '当前版本 v${snapshot.data?.version ?? '—'}',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                     if (controller.availableUpdate != null &&
                         controller.availableUpdate!.releaseNotes
@@ -1195,12 +1552,6 @@ class _AboutPane extends StatelessWidget {
                       onPressed: () => controller.checkForUpdate(),
                       icon: const Icon(Icons.refresh, size: 17),
                       label: const Text('检查更新'),
-                    ),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: CrashReporter.instance.openLogsDirectory,
-                      icon: const Icon(Icons.folder_open_outlined, size: 17),
-                      label: const Text('打开日志目录'),
                     ),
                     if (controller.availableUpdate != null) ...<Widget>[
                       const SizedBox(height: 8),
@@ -1215,23 +1566,45 @@ class _AboutPane extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              const Spacer(),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () => _confirmClear(context),
-                  icon: const Icon(Icons.delete_outline, size: 17),
-                  label: const Text('清除本地数据'),
+                  onPressed: clearing ? null : () => _confirmClear(context),
+                  icon: clearing
+                      ? const SizedBox.square(
+                          dimension: 13,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.delete_outline, size: 17),
+                  label: Text(clearing ? '清除中…' : '清除本地数据'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.danger,
+                    backgroundColor: AppColors.danger.withValues(alpha: 0.035),
+                    side: BorderSide.none,
                   ),
                 ),
               ),
-              const SizedBox(height: 4),
             ],
           ),
         ),
       );
+
+  Future<void> _chooseAvatar() async {
+    const group = XTypeGroup(
+      label: '头像',
+      extensions: <String>['png', 'jpg', 'jpeg', 'gif', 'webp'],
+      uniformTypeIdentifiers: <String>['public.image'],
+    );
+    final file = await openFile(acceptedTypeGroups: const <XTypeGroup>[group]);
+    if (file == null || !mounted) return;
+    setState(() => uploadingAvatar = true);
+    try {
+      await controller.updateAvatar(file.path);
+    } finally {
+      if (mounted) setState(() => uploadingAvatar = false);
+    }
+  }
 
   Future<void> _confirmClear(BuildContext context) async {
     final confirmed = await showDialog<bool>(
@@ -1255,7 +1628,11 @@ class _AboutPane extends StatelessWidget {
         ],
       ),
     );
-    if (confirmed == true) await controller.clearLocalData();
+    if (confirmed == true) {
+      setState(() => clearing = true);
+      await controller.clearLocalData();
+      if (mounted) setState(() => clearing = false);
+    }
   }
 }
 

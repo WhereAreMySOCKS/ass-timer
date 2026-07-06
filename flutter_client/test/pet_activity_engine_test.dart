@@ -43,25 +43,28 @@ void main() {
 
   testWidgets('walk uses the same transition-in keyframes as SwiftUI',
       (tester) async {
-    final sprites = <String>[];
+    final events = <(String, bool)>[];
     final engine = PetActivityEngine(
       random: Random(1),
-      onChanged: (_, sprite, __) => sprites.add(sprite),
+      onChanged: (_, sprite, facingLeft) => events.add((sprite, facingLeft)),
     );
 
     engine.start();
     await tester.pump(const Duration(seconds: 8));
     expect(engine.phase, PetActivityPhase.walking);
-    expect(sprites.last, '站立-1');
+    expect(events.last.$1, '站立-1');
+
+    engine.setFacingLeft(!engine.facingLeft);
+    final reversedDirection = engine.facingLeft;
 
     await tester.pump(const Duration(milliseconds: 350));
-    expect(sprites.last, '站立-2');
+    expect(events.last, ('站立-2', reversedDirection));
     await tester.pump(const Duration(milliseconds: 350));
-    expect(sprites.last, '走-2');
+    expect(events.last.$1, '走-2');
     await tester.pump(const Duration(milliseconds: 350));
-    expect(sprites.last, '走-3');
+    expect(events.last.$1, '走-3');
     await tester.pump(const Duration(milliseconds: 350));
-    expect(sprites.last, '走-2');
+    expect(events.last.$1, '走-2');
     expect(engine.isMoving, isTrue);
     engine.dispose();
     await tester.pump();

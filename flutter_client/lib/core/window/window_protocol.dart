@@ -29,6 +29,7 @@ enum WindowCommand {
   createGroup,
   joinGroup,
   leaveGroup,
+  updateAvatar,
   checkForUpdate,
   saveCustomMedia,
   removeCustomMedia,
@@ -89,7 +90,7 @@ class WindowEnvelope {
         revision: revision,
         payload: <String, dynamic>{
           'command': command.name,
-          'arguments': arguments,
+          'arguments': arguments
         },
       );
 }

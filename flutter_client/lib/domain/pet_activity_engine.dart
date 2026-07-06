@@ -81,6 +81,11 @@ class PetActivityEngine {
 
   void dispose() => stop();
 
+  /// Keeps animation frames in sync when the window reverses at an edge.
+  void setFacingLeft(bool value) {
+    facingLeft = value;
+  }
+
   void _startStanding() {
     _phaseTimer?.cancel();
     _frameTimer?.cancel();

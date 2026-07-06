@@ -14,14 +14,16 @@ class CustomMediaService {
 
   static const int maximumFileBytes = 10 * 1024 * 1024;
   final AppStore _store;
-  static const MethodChannel _nativeChannel =
-      MethodChannel('ass_timer/legacy_migration');
+  static const MethodChannel _nativeChannel = MethodChannel(
+    'ass_timer/legacy_migration',
+  );
 
   Future<bool> supportsBackgroundRemoval() async {
     if (!Platform.isMacOS) return false;
     try {
-      return await _nativeChannel
-              .invokeMethod<bool>('supportsBackgroundRemoval') ??
+      return await _nativeChannel.invokeMethod<bool>(
+            'supportsBackgroundRemoval',
+          ) ??
           false;
     } on PlatformException {
       return false;
@@ -47,8 +49,9 @@ class CustomMediaService {
     final sourceName = '$stem-source.$extension';
     final backgroundName = '$stem-background.png';
     await File(p.join(root.path, sourceName)).writeAsBytes(bytes, flush: true);
-    await File(p.join(root.path, backgroundName))
-        .writeAsBytes(backgroundPng, flush: true);
+    await File(
+      p.join(root.path, backgroundName),
+    ).writeAsBytes(backgroundPng, flush: true);
     if (replacing != null) await remove(replacing);
     return CustomActionMediaEntry(
       sourceFileName: sourceName,
@@ -72,6 +75,15 @@ class CustomMediaService {
     }
   }
 
+  Future<String?> previewPath(CustomActionMediaEntry entry) async {
+    final root = await _store.customMediaRoot();
+    final preferred = entry.removesBackground
+        ? entry.foregroundFileName ?? entry.backgroundFileName
+        : entry.backgroundFileName;
+    final file = File(p.join(root.path, preferred));
+    return file.existsSync() ? file.path : null;
+  }
+
   Future<CustomActionMediaEntry> setBackgroundRemoval(
     CustomActionMediaEntry entry,
     bool enabled,
@@ -89,8 +101,9 @@ class CustomMediaService {
       throw const FormatException('当前系统不支持本地去背景');
     }
     final root = await _store.customMediaRoot();
-    final source =
-        await File(p.join(root.path, entry.sourceFileName)).readAsBytes();
+    final source = await File(
+      p.join(root.path, entry.sourceFileName),
+    ).readAsBytes();
     final result = await _nativeChannel.invokeMethod<Uint8List>(
       'removeBackground',
       <String, dynamic>{'data': source, 'width': 216, 'height': 288},
@@ -98,8 +111,9 @@ class CustomMediaService {
     if (result == null) throw const FormatException('图片处理失败');
     final foregroundName =
         '${p.basenameWithoutExtension(entry.backgroundFileName)}-foreground.png';
-    await File(p.join(root.path, foregroundName))
-        .writeAsBytes(result, flush: true);
+    await File(
+      p.join(root.path, foregroundName),
+    ).writeAsBytes(result, flush: true);
     return CustomActionMediaEntry(
       sourceFileName: entry.sourceFileName,
       backgroundFileName: entry.backgroundFileName,
@@ -114,18 +128,24 @@ class CustomMediaService {
     image = img.bakeOrientation(image);
     const outputWidth = 216;
     const outputHeight = 288;
-    final scale = (outputWidth / image.width)
-        .clamp(outputHeight / image.height, double.infinity);
+    final scale = (outputWidth / image.width).clamp(
+      outputHeight / image.height,
+      double.infinity,
+    );
     final resized = img.copyResize(
       image,
       width: (image.width * scale).round(),
       height: (image.height * scale).round(),
       interpolation: img.Interpolation.cubic,
     );
-    final x =
-        ((resized.width - outputWidth) / 2).round().clamp(0, resized.width);
-    final y =
-        ((resized.height - outputHeight) / 2).round().clamp(0, resized.height);
+    final x = ((resized.width - outputWidth) / 2).round().clamp(
+          0,
+          resized.width,
+        );
+    final y = ((resized.height - outputHeight) / 2).round().clamp(
+          0,
+          resized.height,
+        );
     final cropped = img.copyCrop(
       resized,
       x: x,
