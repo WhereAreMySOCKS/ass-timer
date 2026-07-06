@@ -748,12 +748,14 @@ class AppController extends ChangeNotifier {
     final userId = snapshot.config.userId;
     if (userId != null) unawaited(_webSocket.connect(userId));
     if (userId != null) unawaited(refreshGroups());
-    unawaited(
-      Future<void>.delayed(
-        const Duration(milliseconds: 400),
-        () => DesktopHost.instance.prewarmControlCenter(ControlRoute.chat),
-      ),
-    );
+    if (shouldPrewarmChatWindow(defaultTargetPlatform)) {
+      unawaited(
+        Future<void>.delayed(
+          const Duration(milliseconds: 400),
+          () => DesktopHost.instance.prewarmControlCenter(ControlRoute.chat),
+        ),
+      );
+    }
     unawaited(checkForUpdate(silent: true));
     _updateCheckTimer?.cancel();
     _updateCheckTimer = Timer.periodic(const Duration(hours: 6), (_) {

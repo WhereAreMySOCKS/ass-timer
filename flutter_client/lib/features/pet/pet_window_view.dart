@@ -207,6 +207,17 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
                     ),
                   ),
                 ),
+              if (!DesktopHost.instance.usesSeparateBubbleWindow &&
+                  snapshot.bubbles.isNotEmpty)
+                Positioned(
+                  left: 6,
+                  right: 6,
+                  top: 6,
+                  child: _WindowsBubbleCard(
+                    bubble: snapshot.bubbles.first,
+                    controller: controller,
+                  ),
+                ),
             ],
           ),
         ),
@@ -322,6 +333,86 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
         await DesktopHost.instance.quit();
     }
   }
+}
+
+class _WindowsBubbleCard extends StatelessWidget {
+  const _WindowsBubbleCard({required this.bubble, required this.controller});
+
+  final BubbleItem bubble;
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: AppColors.comicPaper,
+        elevation: 8,
+        shadowColor: Colors.black38,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: AppColors.comicInk, width: 2),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+          child: switch (bubble.kind) {
+            BubbleKind.reminder => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    controller.reminderTitle,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: controller.skipReminder,
+                          child: const Text('稍后提醒'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: controller.completeReminder,
+                          child: Text(controller.completionTitle),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            BubbleKind.groupEvent => Text(
+                '${bubble.senderNickname ?? '群友'} 完成了一次${controller.exerciseName}！',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            BubbleKind.chatMessage => InkWell(
+                onTap: () => controller.openControlCenter(
+                  ControlRoute.chat,
+                  groupId: bubble.groupId,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      bubble.senderNickname ?? '新消息',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      bubble.message ?? '',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+          },
+        ),
+      );
 }
 
 class _PetSprite extends StatelessWidget {

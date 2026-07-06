@@ -152,13 +152,15 @@ class _RootWindowState extends ConsumerState<_RootWindow>
     final hasBubble = controller.snapshot.bubbles.isNotEmpty;
     if (_bubbleVisible != hasBubble) {
       _bubbleVisible = hasBubble;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(
-          hasBubble
-              ? DesktopHost.instance.showBubble()
-              : DesktopHost.instance.hideBubble(),
-        );
-      });
+      if (DesktopHost.instance.usesSeparateBubbleWindow) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(
+            hasBubble
+                ? DesktopHost.instance.showBubble()
+                : DesktopHost.instance.hideBubble(),
+          );
+        });
+      }
     }
     return needsOnboarding ? const OnboardingView() : const PetWindowView();
   }

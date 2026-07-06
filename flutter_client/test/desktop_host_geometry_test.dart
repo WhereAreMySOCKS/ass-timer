@@ -4,6 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Windows keeps bubbles in the root window and skips chat prewarm', () {
+    expect(
+      shouldUseSeparateBubbleWindow(TargetPlatform.windows),
+      isFalse,
+    );
+    expect(shouldPrewarmChatWindow(TargetPlatform.windows), isFalse);
+    expect(shouldUseSeparateBubbleWindow(TargetPlatform.macOS), isTrue);
+    expect(shouldPrewarmChatWindow(TargetPlatform.macOS), isTrue);
+  });
+
   test('obedient mode docks the sprite flush with the left screen edge', () {
     final position = calculateDockedPetPosition(
       visiblePosition: const Offset(0, 24),

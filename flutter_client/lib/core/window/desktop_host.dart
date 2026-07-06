@@ -7,6 +7,7 @@ import 'package:ass_timer_flutter/core/window/serialized_async_throttle.dart';
 import 'package:ass_timer_flutter/core/window/window_protocol.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
@@ -28,6 +29,12 @@ Offset calculateDockedPetPosition({
   final maxY = visiblePosition.dy + visibleSize.height - dockedSize.height;
   return Offset(x, currentY.clamp(visiblePosition.dy, maxY));
 }
+
+bool shouldUseSeparateBubbleWindow(TargetPlatform platform) =>
+    platform != TargetPlatform.windows;
+
+bool shouldPrewarmChatWindow(TargetPlatform platform) =>
+    platform != TargetPlatform.windows;
 
 class StartupResult {
   const StartupResult({
@@ -167,6 +174,9 @@ class DesktopHost with TrayListener, WindowListener {
 
   WindowLaunchArguments get launchArguments =>
       _launchArguments ?? const WindowLaunchArguments(role: WindowRole.pet);
+
+  bool get usesSeparateBubbleWindow =>
+      shouldUseSeparateBubbleWindow(defaultTargetPlatform);
 
   Future<void> bindRoot(
     Future<dynamic> Function(WindowEnvelope envelope) commandHandler,
@@ -334,6 +344,7 @@ class DesktopHost with TrayListener, WindowListener {
   }
 
   Future<void> showBubble() async {
+    if (!usesSeparateBubbleWindow) return;
     final existing = _bubbleWindow;
     if (existing != null) {
       try {
