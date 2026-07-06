@@ -61,6 +61,7 @@ function Get-VcRuntimeCandidates {
               ForEach-Object { $candidates.Add($_.FullName) }
           }
         }
+    }
   }
 
   # A 64-bit GitHub runner already has the matching redistributable installed.
