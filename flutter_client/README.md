@@ -1,7 +1,7 @@
 # Ass-Timer Flutter Client
 
 Ass-Timer 2.x Flutter desktop client for macOS 13+ (Apple Silicon) and Windows 10/11
-(x64). The Swift client remains next to this directory as the rollback build.
+(x64). It is the only active desktop client.
 
 ```bash
 flutter pub get

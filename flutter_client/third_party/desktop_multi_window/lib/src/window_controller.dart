@@ -80,7 +80,10 @@ class WindowController {
     );
   }
 
-  Future<void> show() => _callWindowMethod('window_show', {});
+  Future<void> show({bool inactive = false}) => _callWindowMethod(
+        'window_show',
+        <String, dynamic>{'inactive': inactive},
+      );
 
   Future<void> hide() => _callWindowMethod('window_hide', {});
 

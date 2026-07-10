@@ -108,7 +108,7 @@ class AppController extends ChangeNotifier {
   String get reminderTitle =>
       snapshot.config.appMode == AppMode.obedient ? '该放松了！' : '该提肛了！';
   String get completionTitle =>
-      snapshot.config.appMode == AppMode.obedient ? '已放松' : '已提';
+      snapshot.config.appMode == AppMode.obedient ? '我已放松' : '我已提肛';
   bool get isPetMoving => _activity.isMoving;
 
   Future<void> initialize() async {
@@ -339,6 +339,12 @@ class AppController extends ChangeNotifier {
         );
         _update(config: landedConfig, clearDockSide: true);
         await _store.saveConfig(landedConfig);
+      }
+      if (snapshot.bubbles.isNotEmpty) {
+        await DesktopHost.instance.showBubble(
+          dockSide: snapshot.dockSide,
+          obedient: snapshot.config.appMode == AppMode.obedient,
+        );
       }
     } finally {
       _isChangingObedientMode = false;
@@ -748,14 +754,6 @@ class AppController extends ChangeNotifier {
     final userId = snapshot.config.userId;
     if (userId != null) unawaited(_webSocket.connect(userId));
     if (userId != null) unawaited(refreshGroups());
-    if (shouldPrewarmChatWindow(defaultTargetPlatform)) {
-      unawaited(
-        Future<void>.delayed(
-          const Duration(milliseconds: 400),
-          () => DesktopHost.instance.prewarmControlCenter(ControlRoute.chat),
-        ),
-      );
-    }
     unawaited(checkForUpdate(silent: true));
     _updateCheckTimer?.cancel();
     _updateCheckTimer = Timer.periodic(const Duration(hours: 6), (_) {

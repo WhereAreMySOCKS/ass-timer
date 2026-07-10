@@ -335,173 +335,326 @@ class _GroupsPaneState extends State<_GroupsPane> {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Expanded(
-                child: _PaneTitle('群组', subtitle: '创建或加入多个群组，完成记录会同步到所有群组。'),
-              ),
-              IconButton(
-                tooltip: '刷新群组',
-                onPressed: widget.controller.refreshGroups,
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
-          ),
+          _buildHeader(),
+          const SizedBox(height: 12),
           Expanded(
             child: widget.controller.groups.isEmpty
-                ? const Center(child: Text('还没有群组'))
+                ? _buildEmptyState()
                 : ListView.separated(
+                    padding: const EdgeInsets.only(bottom: 10),
                     itemCount: widget.controller.groups.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final group = widget.controller.groups[index];
-                      return AppCard(
-                        padding: EdgeInsets.zero,
-                        child: ExpansionTile(
-                          key: PageStorageKey<String>(group.groupId),
-                          initiallyExpanded:
-                              expandedGroups.contains(group.groupId),
-                          onExpansionChanged: (expanded) => setState(() {
-                            if (expanded) {
-                              expandedGroups.add(group.groupId);
-                            } else {
-                              expandedGroups.remove(group.groupId);
-                            }
-                          }),
-                          leading: const CircleAvatar(
-                            child: Icon(Icons.groups_outlined, size: 19),
-                          ),
-                          title: Text(
-                            group.name.isEmpty ? '未命名群组' : group.name,
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                          subtitle: Text('${group.members.length} 位成员'),
-                          childrenPadding:
-                              const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                          children: <Widget>[
-                            const Divider(),
-                            Row(
-                              children: <Widget>[
-                                const Text(
-                                  '邀请码',
-                                  style: TextStyle(
-                                    color: AppColors.secondaryText,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Wrap(
-                                    spacing: 4,
-                                    children: <Widget>[
-                                      for (final character
-                                          in group.inviteCode.characters)
-                                        Container(
-                                          width: 26,
-                                          height: 30,
-                                          alignment: Alignment.center,
-                                          decoration: BoxDecoration(
-                                            color: AppColors.accentSoft,
-                                            borderRadius:
-                                                BorderRadius.circular(6),
-                                          ),
-                                          child: Text(
-                                            character,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                              fontFeatures: <FontFeature>[
-                                                FontFeature.tabularFigures(),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                TextButton.icon(
-                                  onPressed: () => Clipboard.setData(
-                                    ClipboardData(text: group.inviteCode),
-                                  ),
-                                  icon: const Icon(Icons.copy, size: 15),
-                                  label: const Text('复制'),
-                                ),
-                              ],
-                            ),
-                            if (group.members.isNotEmpty) ...<Widget>[
-                              const SizedBox(height: 8),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  '成员',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              for (final member in group.members)
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 3),
-                                  child: Row(
-                                    children: <Widget>[
-                                      CircleAvatar(
-                                        radius: 11,
-                                        child: Text(
-                                          member.petEmoji,
-                                          style: const TextStyle(fontSize: 11),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(member.nickname),
-                                      if (member.userId ==
-                                          widget.controller.snapshot.config
-                                              .userId) ...<Widget>[
-                                        const SizedBox(width: 6),
-                                        const Text(
-                                          '我',
-                                          style: TextStyle(
-                                            color: AppColors.accent,
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                            ],
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton(
-                                onPressed: () => _confirmLeave(group),
-                                child: const Text(
-                                  '退出群组',
-                                  style: TextStyle(color: AppColors.danger),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                    itemBuilder: (context, index) =>
+                        _buildGroupCard(widget.controller.groups[index]),
                   ),
           ),
-          Row(
-            children: <Widget>[
-              FilledButton.icon(
-                onPressed: _showCreate,
-                icon: const Icon(Icons.add),
-                label: const Text('创建群组'),
-              ),
-              const SizedBox(width: 10),
-              OutlinedButton.icon(
-                onPressed: _showJoin,
-                icon: const Icon(Icons.login),
-                label: const Text('加入群组'),
-              ),
-            ],
+          const SizedBox(height: 12),
+          _buildActions(),
+        ],
+      );
+
+  Widget _buildHeader() => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '群组',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    height: 1.1,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  '管理同步完成记录的群组和邀请码。',
+                  style: TextStyle(
+                    color: AppColors.secondaryText,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton.filledTonal(
+            tooltip: '刷新群组',
+            onPressed: widget.controller.refreshGroups,
+            icon: const Icon(Icons.refresh_rounded, size: 19),
           ),
         ],
       );
+
+  Widget _buildEmptyState() => Center(
+        child: Container(
+          width: 320,
+          padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.groups_2_outlined, size: 32, color: AppColors.accent),
+              SizedBox(height: 12),
+              Text(
+                '还没有群组',
+                style: TextStyle(
+                  color: AppColors.text,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                '创建一个群组，或用邀请码加入已有群组。',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.secondaryText, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _buildGroupCard(GroupInfo group) {
+    final isExpanded = expandedGroups.contains(group.groupId);
+    final groupName = group.name.isEmpty ? '未命名群组' : group.name;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Column(
+          children: <Widget>[
+            InkWell(
+              onTap: () => _toggleGroup(group.groupId),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                child: Row(
+                  children: <Widget>[
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: AppColors.accentSoft,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.groups_2_outlined,
+                        color: Color(0xFF174A8B),
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            groupName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.text,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              height: 1.15,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          _MetaPill(
+                            icon: Icons.person_outline_rounded,
+                            label: '${group.members.length} 位成员',
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: isExpanded ? '收起' : '展开',
+                      onPressed: () => _toggleGroup(group.groupId),
+                      icon: AnimatedRotation(
+                        turns: isExpanded ? 0.5 : 0,
+                        duration: const Duration(milliseconds: 160),
+                        child: const Icon(Icons.keyboard_arrow_down_rounded),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            AnimatedCrossFade(
+              firstChild: const SizedBox(width: double.infinity),
+              secondChild: _buildGroupDetails(group),
+              crossFadeState: isExpanded
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
+              duration: const Duration(milliseconds: 160),
+              sizeCurve: Curves.easeOutCubic,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGroupDetails(GroupInfo group) => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Divider(height: 1),
+            const SizedBox(height: 13),
+            _SectionLabel(
+              icon: Icons.key_rounded,
+              label: '邀请码',
+              trailing: TextButton.icon(
+                onPressed: () => Clipboard.setData(
+                  ClipboardData(text: group.inviteCode),
+                ),
+                icon: const Icon(Icons.copy_rounded, size: 15),
+                label: const Text('复制'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: <Widget>[
+                for (final character in group.inviteCode.characters)
+                  _InviteCodeCell(character: character),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const _SectionLabel(icon: Icons.badge_outlined, label: '成员'),
+            const SizedBox(height: 8),
+            if (group.members.isEmpty)
+              const Text(
+                '暂无成员信息',
+                style: TextStyle(color: AppColors.secondaryText, fontSize: 12),
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (final member in group.members) _memberChip(member),
+                ],
+              ),
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _confirmLeave(group),
+                icon: const Icon(Icons.logout_rounded, size: 16),
+                label: const Text('退出群组'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.danger,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _memberChip(GroupMember member) {
+    final isMe = member.userId == widget.controller.snapshot.config.userId;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(7, 5, 9, 5),
+      decoration: BoxDecoration(
+        color: AppColors.muted,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          CircleAvatar(
+            radius: 11,
+            backgroundColor: Colors.white,
+            child: Text(member.petEmoji, style: const TextStyle(fontSize: 11)),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            member.nickname,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (isMe) ...<Widget>[
+            const SizedBox(width: 5),
+            const Text(
+              '我',
+              style: TextStyle(
+                color: AppColors.accent,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActions() => DecoratedBox(
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: AppColors.border)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Row(
+            children: <Widget>[
+              SizedBox(
+                height: 40,
+                width: 148,
+                child: FilledButton.icon(
+                  onPressed: _showCreate,
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('创建群组'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                height: 40,
+                width: 148,
+                child: OutlinedButton.icon(
+                  onPressed: _showJoin,
+                  icon: const Icon(Icons.login_rounded, size: 18),
+                  label: const Text('加入群组'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  void _toggleGroup(String groupId) => setState(() {
+        if (expandedGroups.contains(groupId)) {
+          expandedGroups.remove(groupId);
+        } else {
+          expandedGroups.add(groupId);
+        }
+      });
 
   Future<void> _showCreate() => _textDialog(
         title: '创建群组',
@@ -574,6 +727,95 @@ class _GroupsPaneState extends State<_GroupsPane> {
     );
     if (confirmed == true) await widget.controller.leaveGroup(group.groupId);
   }
+}
+
+class _MetaPill extends StatelessWidget {
+  const _MetaPill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.fromLTRB(7, 3, 8, 3),
+        decoration: BoxDecoration(
+          color: AppColors.muted,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 13, color: AppColors.secondaryText),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.secondaryText,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                height: 1.1,
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({
+    required this.icon,
+    required this.label,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String label;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: <Widget>[
+          Icon(icon, size: 15, color: AppColors.secondaryText),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.secondaryText,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const Spacer(),
+          if (trailing != null) trailing!,
+        ],
+      );
+}
+
+class _InviteCodeCell extends StatelessWidget {
+  const _InviteCodeCell({required this.character});
+
+  final String character;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 30,
+        height: 34,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.accentSoft,
+          border: Border.all(color: const Color(0xFFC8DCF7)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          character,
+          style: const TextStyle(
+            color: AppColors.text,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+          ),
+        ),
+      );
 }
 
 class _ChatPane extends StatefulWidget {

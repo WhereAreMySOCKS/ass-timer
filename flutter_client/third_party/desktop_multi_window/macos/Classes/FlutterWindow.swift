@@ -12,6 +12,9 @@ extension WindowId {
 
 class CustomWindow: NSWindow {
 
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+
     init(configuration: WindowConfiguration) {
         super.init(
             contentRect: NSRect(x: 10, y: 10, width: 800, height: 600),
@@ -36,6 +39,10 @@ class FlutterWindow: NSObject {
     private var willBecomeActiveObserver: NSObjectProtocol?
     private var didResignActiveObserver: NSObjectProtocol?
     private var closeObserver: NSObjectProtocol?
+
+    private var isBubbleWindow: Bool {
+        return windowArgument.contains("\"role\":\"bubble\"")
+    }
 
     init(windowId: WindowId, windowArgument: String, window: NSWindow) {
         self.windowId = windowId
@@ -99,9 +106,22 @@ class FlutterWindow: NSObject {
     func handleWindowMethod(method: String, arguments: Any?, result: @escaping FlutterResult) {
         switch method {
         case "window_show":
-            window.makeKeyAndOrderFront(nil)
+            let args = arguments as? [String: Any]
+            let inactive = args?["inactive"] as? Bool ?? false
+            if inactive {
+                // A reminder window is an overlay. `orderFront` does not
+                // reliably reassert it above another application's full
+                // screen space; this variant does, without stealing focus.
+                if isBubbleWindow {
+                    window.orderFrontRegardless()
+                } else {
+                    window.orderFront(nil)
+                }
+            } else {
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
             window.setIsVisible(true)
-            NSApp.activate(ignoringOtherApps: true)
             result(nil)
         case "window_hide":
             window.orderOut(nil)

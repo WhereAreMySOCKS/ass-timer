@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:ass_timer_flutter/core/diagnostics/crash_reporter.dart';
+import 'package:ass_timer_flutter/core/window/bubble_layout.dart';
 import 'package:ass_timer_flutter/core/window/serialized_async_throttle.dart';
 import 'package:ass_timer_flutter/core/window/window_protocol.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
@@ -15,6 +16,17 @@ import 'package:screen_retriever/screen_retriever.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
+const Size petWindowSize = Size(224, 200);
+const Size dockedPetWindowSize = Size(184, 200);
+const Size bubbleWindowSize = Size(312, 204);
+const double petVisualAreaWidth = 164;
+const double petSpriteLeadingInset = 28;
+const double petSpriteWidth = 108;
+
+double petVisualLeftForDockSide(PetDockSide? side) => side == PetDockSide.right
+    ? dockedPetWindowSize.width - petVisualAreaWidth
+    : 0;
+
 @visibleForTesting
 Offset calculateDockedPetPosition({
   required Offset visiblePosition,
@@ -22,19 +34,74 @@ Offset calculateDockedPetPosition({
   required double currentY,
   required PetDockSide side,
 }) {
-  const dockedSize = Size(164, 200);
   final x = side == PetDockSide.left
-      ? visiblePosition.dx - 28
-      : visiblePosition.dx + visibleSize.width - 108 - 28;
-  final maxY = visiblePosition.dy + visibleSize.height - dockedSize.height;
+      ? visiblePosition.dx - petSpriteLeadingInset
+      : visiblePosition.dx +
+          visibleSize.width -
+          dockedPetWindowSize.width +
+          petSpriteLeadingInset;
+  final maxY =
+      visiblePosition.dy + visibleSize.height - dockedPetWindowSize.height;
   return Offset(x, currentY.clamp(visiblePosition.dy, maxY));
 }
 
-bool shouldUseSeparateBubbleWindow(TargetPlatform platform) =>
-    platform != TargetPlatform.windows;
+/// Places the toast beside a docked pet, above a free-roaming one, or beside
+/// the pet icon when the pet is in obedient mode.
+///
+/// Keeping this calculation in the host (rather than in the widget) makes the
+/// toast follow its own native window without allowing it to spill off screen.
+@visibleForTesting
+Offset calculateBubbleWindowPosition({
+  required Offset petPosition,
+  required Size petSize,
+  required Size bubbleSize,
+  required Offset visiblePosition,
+  required Size visibleSize,
+  PetDockSide? dockSide,
+  bool obedient = false,
+}) {
+  const screenInset = 8.0;
+  double x;
+  double y;
+  if (obedient) {
+    final visualLeft = dockSide == PetDockSide.right
+        ? dockedPetWindowSize.width - petVisualAreaWidth
+        : 0.0;
+    final petVisualLeft = petPosition.dx + visualLeft;
+    final petVisualRight = petVisualLeft + petVisualAreaWidth;
+    x = dockSide == PetDockSide.right
+        ? petVisualLeft - bubbleSize.width + 8
+        : petVisualRight - 8;
+    y = petPosition.dy + 62;
+  } else {
+    switch (dockSide) {
+      case PetDockSide.left:
+        x = petPosition.dx + petSize.width - petSpriteLeadingInset;
+        y = petPosition.dy + (petSize.height - bubbleSize.height) / 2;
+      case PetDockSide.right:
+        x = petPosition.dx - bubbleSize.width + petSpriteLeadingInset;
+        y = petPosition.dy + (petSize.height - bubbleSize.height) / 2;
+      case null:
+        x = petPosition.dx + (petSize.width - bubbleSize.width) / 2;
+        y = petPosition.dy - bubbleSize.height + 20;
+    }
+  }
 
-bool shouldPrewarmChatWindow(TargetPlatform platform) =>
-    platform != TargetPlatform.windows;
+  final minX = visiblePosition.dx + screenInset;
+  final maxX = math.max(minX,
+      visiblePosition.dx + visibleSize.width - bubbleSize.width - screenInset);
+  final minY = visiblePosition.dy + screenInset;
+  final maxY = math.max(
+      minY,
+      visiblePosition.dy +
+          visibleSize.height -
+          bubbleSize.height -
+          screenInset);
+  return Offset(x.clamp(minX, maxX), y.clamp(minY, maxY));
+}
+
+bool shouldUseSeparateBubbleWindow(TargetPlatform platform) =>
+    platform == TargetPlatform.macOS || platform == TargetPlatform.windows;
 
 class StartupResult {
   const StartupResult({
@@ -68,12 +135,17 @@ class DesktopHost with TrayListener, WindowListener {
   DesktopHost._();
 
   static final DesktopHost instance = DesktopHost._();
+  static const MethodChannel _desktopHostChannel =
+      MethodChannel('ass_timer/desktop_host');
 
   WindowController? _settingsWindow;
   WindowController? _chatWindow;
   WindowController? _leaderboardWindow;
   Future<WindowController>? _chatWindowCreation;
   WindowController? _bubbleWindow;
+  PetDockSide? _bubbleDockSide;
+  bool _bubbleObedient = false;
+  bool _bubbleIsVisible = false;
   WindowController? _currentWindow;
   WindowLaunchArguments? _launchArguments;
   final List<WindowController> _children = <WindowController>[];
@@ -99,14 +171,14 @@ class DesktopHost with TrayListener, WindowListener {
     _launchArguments = arguments;
     final options = switch (arguments.role) {
       WindowRole.pet => const WindowOptions(
-          size: Size(224, 200),
+          size: petWindowSize,
           backgroundColor: Colors.transparent,
           skipTaskbar: true,
           titleBarStyle: TitleBarStyle.hidden,
           alwaysOnTop: true,
         ),
       WindowRole.bubble => const WindowOptions(
-          size: Size(320, 220),
+          size: bubbleWindowSize,
           backgroundColor: Colors.transparent,
           skipTaskbar: true,
           titleBarStyle: TitleBarStyle.hidden,
@@ -133,6 +205,7 @@ class DesktopHost with TrayListener, WindowListener {
           true,
           visibleOnFullScreen: true,
         );
+        await _setMacOverlayWindow(true);
       }
       await windowManager.show(inactive: arguments.role == WindowRole.bubble);
     });
@@ -205,10 +278,42 @@ class DesktopHost with TrayListener, WindowListener {
       }
       if (call.method == 'anchor' && call.arguments is Map) {
         final anchor = (call.arguments as Map).cast<String, dynamic>();
+        final petPosition = Offset(
+          (anchor['x'] as num).toDouble(),
+          (anchor['y'] as num).toDouble(),
+        );
+        final petSize = Size(
+          (anchor['width'] as num).toDouble(),
+          (anchor['height'] as num).toDouble(),
+        );
+        final dockSideName = anchor['dockSide'] as String?;
+        final dockSide = dockSideName == null
+            ? null
+            : PetDockSide.values.byName(dockSideName);
+        final obedient = anchor['obedient'] as bool? ?? false;
+        final contentSize = Size(
+          (anchor['contentWidth'] as num?)?.toDouble() ??
+              (obedient
+                  ? obedientBubbleContentSize.width
+                  : normalBubbleContentSize.width),
+          (anchor['contentHeight'] as num?)?.toDouble() ??
+              (obedient
+                  ? obedientBubbleContentSize.height
+                  : normalBubbleContentSize.height),
+        );
+        await windowManager.setSize(contentSize);
+        final display = await _displayFor(petPosition, petSize);
+        final visiblePosition = display.visiblePosition ?? Offset.zero;
+        final visibleSize = display.visibleSize ?? display.size;
         await windowManager.setPosition(
-          Offset(
-            (anchor['x'] as num).toDouble() - 48,
-            (anchor['y'] as num).toDouble() - 205,
+          calculateBubbleWindowPosition(
+            petPosition: petPosition,
+            petSize: petSize,
+            bubbleSize: contentSize,
+            visiblePosition: visiblePosition,
+            visibleSize: visibleSize,
+            dockSide: dockSide,
+            obedient: obedient,
           ),
         );
         return true;
@@ -284,6 +389,7 @@ class DesktopHost with TrayListener, WindowListener {
           'groupId': groupId,
         });
         await existing.show();
+        await _raiseBubbleAboveAppWindows();
         return;
       } on Object {
         _children.remove(existing);
@@ -298,6 +404,23 @@ class DesktopHost with TrayListener, WindowListener {
       });
     }
     await controller.show();
+    await _raiseBubbleAboveAppWindows();
+  }
+
+  /// Reasserts the non-activating reminder window after an app page gains
+  /// focus, so the bubble remains above every control-center window.
+  Future<void> _raiseBubbleAboveAppWindows() async {
+    final bubble = _bubbleWindow;
+    if (bubble == null || !_bubbleIsVisible) return;
+    try {
+      await bubble.show(inactive: true);
+    } on Object {
+      _children.remove(bubble);
+      if (_bubbleWindow == bubble) {
+        _bubbleWindow = null;
+        _bubbleIsVisible = false;
+      }
+    }
   }
 
   Future<void> prewarmControlCenter(ControlRoute route) async {
@@ -343,12 +466,19 @@ class DesktopHost with TrayListener, WindowListener {
     return controller;
   }
 
-  Future<void> showBubble() async {
+  Future<void> showBubble(
+      {PetDockSide? dockSide, bool obedient = false}) async {
     if (!usesSeparateBubbleWindow) return;
+    _bubbleDockSide = dockSide;
+    _bubbleObedient = obedient;
+    _bubbleIsVisible = true;
     final existing = _bubbleWindow;
     if (existing != null) {
       try {
-        await existing.show();
+        if (!_children.any((child) => child.windowId == existing.windowId)) {
+          _children.add(existing);
+        }
+        await existing.show(inactive: true);
         _scheduleBubblePosition(immediate: true);
         return;
       } on Object {
@@ -367,11 +497,27 @@ class DesktopHost with TrayListener, WindowListener {
     );
     _bubbleWindow = controller;
     _children.add(controller);
-    await controller.show();
+    await controller.show(inactive: true);
     _scheduleBubblePosition(immediate: true);
+    // The secondary Flutter engine registers its message handler shortly
+    // after the native window appears. Retry once so the first reminder is
+    // anchored too, rather than waiting for the pet's next movement.
+    unawaited(Future<void>.delayed(const Duration(milliseconds: 400), () {
+      if (_bubbleWindow == controller) {
+        if (!_children.any((child) => child.windowId == controller.windowId)) {
+          _children.add(controller);
+        }
+        _scheduleBubblePosition(immediate: true);
+      }
+    }));
   }
 
-  Future<void> hideBubble() async => _bubbleWindow?.hide();
+  Future<void> hideBubble() async {
+    _bubbleDockSide = null;
+    _bubbleObedient = false;
+    _bubbleIsVisible = false;
+    await _bubbleWindow?.hide();
+  }
 
   Future<void> closeSecondaryWindows() async {
     final windows = <WindowController?>[
@@ -393,11 +539,14 @@ class DesktopHost with TrayListener, WindowListener {
     _chatWindow = null;
     _leaderboardWindow = null;
     _bubbleWindow = null;
+    _bubbleDockSide = null;
+    _bubbleObedient = false;
+    _bubbleIsVisible = false;
   }
 
   Future<void> startPetDrag() async {
     final size = await windowManager.getSize();
-    if (size.width < 200) await windowManager.setSize(const Size(224, 200));
+    if (size.width < 200) await windowManager.setSize(petWindowSize);
     await windowManager.startDragging();
   }
 
@@ -473,21 +622,34 @@ class DesktopHost with TrayListener, WindowListener {
     final visibleRight = visiblePosition.dx + visibleSize.width;
     PetDockSide? side;
     if (obedient) {
-      final spriteLeft = position.dx + 28;
-      final spriteRight = spriteLeft + 108;
+      final compactAndOnRight = size.width < 200 &&
+          position.dx + size.width / 2 >
+              visiblePosition.dx + visibleSize.width / 2;
+      final spriteLeft = position.dx +
+          (compactAndOnRight
+              ? petVisualLeftForDockSide(PetDockSide.right)
+              : 0) +
+          petSpriteLeadingInset;
+      final spriteRight = spriteLeft + petSpriteWidth;
       if (spriteLeft <= visiblePosition.dx + 32) {
         side = PetDockSide.left;
-        position = Offset(visiblePosition.dx - 28, position.dy);
       } else if (spriteRight >= visibleRight - 32) {
         side = PetDockSide.right;
-        position = Offset(visibleRight - 108 - 28, position.dy);
+      }
+      if (side != null) {
+        position = calculateDockedPetPosition(
+          visiblePosition: visiblePosition,
+          visibleSize: visibleSize,
+          currentY: position.dy,
+          side: side,
+        );
       }
     }
     if (side != null) {
-      size = const Size(164, 200);
+      size = dockedPetWindowSize;
       await windowManager.setSize(size);
     } else if (size.width < 200) {
-      size = const Size(224, 200);
+      size = petWindowSize;
       await windowManager.setSize(size);
     }
     final maxY = visiblePosition.dy + visibleSize.height - size.height;
@@ -502,14 +664,13 @@ class DesktopHost with TrayListener, WindowListener {
     final display = await _displayFor(position, currentSize);
     final visiblePosition = display.visiblePosition ?? Offset.zero;
     final visibleSize = display.visibleSize ?? display.size;
-    const dockedSize = Size(164, 200);
     position = calculateDockedPetPosition(
       visiblePosition: visiblePosition,
       visibleSize: visibleSize,
       currentY: position.dy,
       side: side,
     );
-    await windowManager.setSize(dockedSize);
+    await windowManager.setSize(dockedPetWindowSize);
     await windowManager.setPosition(position, animate: true);
     return position;
   }
@@ -520,18 +681,17 @@ class DesktopHost with TrayListener, WindowListener {
     final display = await _displayFor(position, currentSize);
     final visiblePosition = display.visiblePosition ?? Offset.zero;
     final visibleSize = display.visibleSize ?? display.size;
-    const fullSize = Size(224, 200);
     position = Offset(
       position.dx.clamp(
         visiblePosition.dx + 30,
-        visiblePosition.dx + visibleSize.width - fullSize.width - 30,
+        visiblePosition.dx + visibleSize.width - petWindowSize.width - 30,
       ),
       position.dy.clamp(
         visiblePosition.dy,
-        visiblePosition.dy + visibleSize.height - fullSize.height,
+        visiblePosition.dy + visibleSize.height - petWindowSize.height,
       ),
     );
-    await windowManager.setSize(fullSize);
+    await windowManager.setSize(petWindowSize);
     await windowManager.setPosition(position, animate: true);
     return position;
   }
@@ -553,12 +713,13 @@ class DesktopHost with TrayListener, WindowListener {
 
   Future<void> setOnboardingMode(bool onboarding) async {
     if (Platform.isMacOS) {
-      await const MethodChannel('ass_timer/desktop_host').invokeMethod<void>(
+      await _desktopHostChannel.invokeMethod<void>(
         'setActivationPolicy',
         onboarding ? 'regular' : 'accessory',
       );
     }
     if (onboarding) {
+      await _setMacOverlayWindow(false);
       await windowManager.setAlwaysOnTop(false);
       await windowManager.setSkipTaskbar(false);
       await windowManager.setTitleBarStyle(TitleBarStyle.normal);
@@ -568,7 +729,7 @@ class DesktopHost with TrayListener, WindowListener {
       await windowManager.show();
       await windowManager.focus();
     } else {
-      await windowManager.setSize(const Size(224, 200));
+      await windowManager.setSize(petWindowSize);
       await windowManager.setResizable(false);
       await windowManager.setAsFrameless();
       await windowManager.setSkipTaskbar(!Platform.isWindows || _trayAvailable);
@@ -577,7 +738,16 @@ class DesktopHost with TrayListener, WindowListener {
         true,
         visibleOnFullScreen: true,
       );
+      await _setMacOverlayWindow(true);
     }
+  }
+
+  Future<void> _setMacOverlayWindow(bool enabled) async {
+    if (!Platform.isMacOS) return;
+    await _desktopHostChannel.invokeMethod<void>(
+      'setOverlayWindow',
+      <String, bool>{'enabled': enabled},
+    );
   }
 
   Stream<String> get powerEvents => Platform.isWindows
@@ -633,10 +803,20 @@ class DesktopHost with TrayListener, WindowListener {
     final bubble = _bubbleWindow;
     if (bubble == null || launchArguments.role != WindowRole.pet) return;
     final position = await windowManager.getPosition();
+    final size = await windowManager.getSize();
     try {
-      await bubble.invokeMethod<void>('anchor', <String, double>{
+      final obedient = _bubbleObedient;
+      final contentSize =
+          obedient ? obedientBubbleContentSize : normalBubbleContentSize;
+      await bubble.invokeMethod<void>('anchor', <String, dynamic>{
         'x': position.dx,
         'y': position.dy,
+        'width': size.width,
+        'height': size.height,
+        'dockSide': _bubbleDockSide?.name,
+        'obedient': obedient,
+        'contentWidth': contentSize.width,
+        'contentHeight': contentSize.height,
       });
     } on Object {
       // A newly-created secondary engine may not have registered yet.
@@ -670,6 +850,11 @@ class DesktopHost with TrayListener, WindowListener {
     if (_chatWindow?.windowId == windowId) _chatWindow = null;
     if (_leaderboardWindow?.windowId == windowId) _leaderboardWindow = null;
     if (_bubbleWindow?.windowId == windowId) _bubbleWindow = null;
+    if (_bubbleWindow == null) {
+      _bubbleDockSide = null;
+      _bubbleObedient = false;
+      _bubbleIsVisible = false;
+    }
   }
 
   Future<void> disposeCurrentWindow() async {

@@ -111,6 +111,7 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
   Widget build(BuildContext context) {
     final controller = ref.watch(appControllerProvider);
     final snapshot = controller.snapshot;
+    final petVisualLeft = petVisualLeftForDockSide(snapshot.dockSide);
     DesktopHost.instance.onPetMoveSettled = controller.settlePetWindow;
     _syncWalking(controller);
     return Material(
@@ -126,100 +127,89 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
             if (mounted) setState(() => _hovering = false);
           });
         },
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onPanStart: (_) => DesktopHost.instance.startPetDrag(),
-          onTap: () => _handleTap(controller),
-          onDoubleTap: () => unawaited(_handleDoubleTap(controller)),
-          onSecondaryTapDown: (details) =>
-              _showContextMenu(details.globalPosition, controller),
-          child: Stack(
-            alignment: Alignment.centerLeft,
-            children: <Widget>[
-              SizedBox(
-                width: 164,
-                height: 200,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            Positioned(
+              left: petVisualLeft,
+              top: 0,
+              width: petVisualAreaWidth,
+              height: petWindowSize.height,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onPanStart: (_) => DesktopHost.instance.startPetDrag(),
+                onTap: () => _handleTap(controller),
+                onDoubleTap: () => unawaited(_handleDoubleTap(controller)),
+                onSecondaryTapDown: (details) =>
+                    _showContextMenu(details.globalPosition, controller),
                 child: Center(child: _animatedPet(snapshot)),
               ),
-              Positioned.fill(
-                child: AnimatedOpacity(
-                  opacity: _hovering ? 1 : 0,
-                  duration: MediaQuery.disableAnimationsOf(context)
-                      ? Duration.zero
-                      : const Duration(milliseconds: 160),
-                  child: IgnorePointer(
-                    ignoring: !_hovering,
-                    child: _PetActions(controller: controller),
+            ),
+            Positioned.fill(
+              child: AnimatedOpacity(
+                opacity: _hovering ? 1 : 0,
+                duration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 160),
+                child: IgnorePointer(
+                  ignoring: !_hovering,
+                  child: _PetActions(controller: controller),
+                ),
+              ),
+            ),
+            if (controller.availableUpdate != null)
+              Positioned(
+                left: petVisualLeft + 132,
+                top: 18,
+                child: Tooltip(
+                  message: '发现新版本 ${controller.availableUpdate!.latestVersion}',
+                  child: InkWell(
+                    onTap: () => launchUrl(
+                      Uri.parse(controller.availableUpdate!.downloadUrl),
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      width: 18,
+                      height: 18,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: Colors.orange,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Text(
+                        '!',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
-              if (controller.availableUpdate != null)
-                Positioned(
-                  left: 132,
-                  top: 18,
-                  child: Tooltip(
-                    message:
-                        '发现新版本 ${controller.availableUpdate!.latestVersion}',
-                    child: InkWell(
-                      onTap: () => launchUrl(
-                        Uri.parse(controller.availableUpdate!.downloadUrl),
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        width: 18,
-                        height: 18,
-                        alignment: Alignment.center,
-                        decoration: const BoxDecoration(
-                          color: Colors.orange,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Text(
-                          '!',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
+            if (snapshot.lastError != null)
+              Positioned(
+                left: petVisualLeft + 10,
+                right: snapshot.dockSide == PetDockSide.right ? 10 : 66,
+                bottom: 4,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.76),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    child: Text(
+                      snapshot.lastError!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
                     ),
                   ),
                 ),
-              if (snapshot.lastError != null)
-                Positioned(
-                  left: 10,
-                  right: 66,
-                  bottom: 4,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.76),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 5),
-                      child: Text(
-                        snapshot.lastError!,
-                        textAlign: TextAlign.center,
-                        style:
-                            const TextStyle(color: Colors.white, fontSize: 10),
-                      ),
-                    ),
-                  ),
-                ),
-              if (!DesktopHost.instance.usesSeparateBubbleWindow &&
-                  snapshot.bubbles.isNotEmpty)
-                Positioned(
-                  left: 6,
-                  right: 6,
-                  top: 6,
-                  child: _WindowsBubbleCard(
-                    bubble: snapshot.bubbles.first,
-                    controller: controller,
-                  ),
-                ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
@@ -335,86 +325,6 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
   }
 }
 
-class _WindowsBubbleCard extends StatelessWidget {
-  const _WindowsBubbleCard({required this.bubble, required this.controller});
-
-  final BubbleItem bubble;
-  final AppController controller;
-
-  @override
-  Widget build(BuildContext context) => Material(
-        color: AppColors.comicPaper,
-        elevation: 8,
-        shadowColor: Colors.black38,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: AppColors.comicInk, width: 2),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
-          child: switch (bubble.kind) {
-            BubbleKind.reminder => Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    controller.reminderTitle,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: controller.skipReminder,
-                          child: const Text('稍后提醒'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: controller.completeReminder,
-                          child: Text(controller.completionTitle),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            BubbleKind.groupEvent => Text(
-                '${bubble.senderNickname ?? '群友'} 完成了一次${controller.exerciseName}！',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            BubbleKind.chatMessage => InkWell(
-                onTap: () => controller.openControlCenter(
-                  ControlRoute.chat,
-                  groupId: bubble.groupId,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      bubble.senderNickname ?? '新消息',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      bubble.message ?? '',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-          },
-        ),
-      );
-}
-
 class _PetSprite extends StatelessWidget {
   const _PetSprite({required this.snapshot});
 
@@ -516,6 +426,27 @@ String? resolveDefaultPetSprite({
   return currentSprite;
 }
 
+@visibleForTesting
+List<Offset> petActionCenters(PetDockSide? dockSide) {
+  const rightArc = <Offset>[
+    Offset(138, 43),
+    Offset(153, 70),
+    Offset(158, 100),
+    Offset(153, 130),
+    Offset(138, 157),
+  ];
+  if (dockSide != PetDockSide.right) return rightArc;
+  final visualLeft = petVisualLeftForDockSide(dockSide);
+  return rightArc
+      .map(
+        (point) => Offset(
+          visualLeft + petVisualAreaWidth - point.dx,
+          point.dy,
+        ),
+      )
+      .toList(growable: false);
+}
+
 class _PetActions extends StatelessWidget {
   const _PetActions({required this.controller});
 
@@ -523,19 +454,7 @@ class _PetActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const rightArc = <Offset>[
-      Offset(138, 43),
-      Offset(153, 70),
-      Offset(158, 100),
-      Offset(153, 130),
-      Offset(138, 157),
-    ];
-    final dockedRight = controller.snapshot.dockSide == PetDockSide.right;
-    final positions = dockedRight
-        ? rightArc
-            .map((point) => Offset(164 - point.dx, point.dy))
-            .toList(growable: false)
-        : rightArc;
+    final positions = petActionCenters(controller.snapshot.dockSide);
     final unread = controller.snapshot.unreadCounts.values
         .fold<int>(0, (total, count) => total + count);
     final obedient = controller.snapshot.config.appMode == AppMode.obedient;
@@ -570,6 +489,7 @@ class _PetActions extends StatelessWidget {
     ];
 
     return Stack(
+      clipBehavior: Clip.none,
       children: <Widget>[
         for (var index = 0; index < buttons.length; index++)
           Positioned(
@@ -631,6 +551,15 @@ class _ActionButtonState extends State<_ActionButton> {
                               .withValues(alpha: hovering ? 0.24 : 0.16)
                           : Colors.black
                               .withValues(alpha: hovering ? 0.11 : 0.001),
+                      boxShadow: widget.selected || hovering
+                          ? const <BoxShadow>[
+                              BoxShadow(
+                                color: Color(0x26000000),
+                                blurRadius: 5,
+                                offset: Offset(0, 2),
+                              ),
+                            ]
+                          : const <BoxShadow>[],
                     ),
                     alignment: Alignment.center,
                     child: Icon(

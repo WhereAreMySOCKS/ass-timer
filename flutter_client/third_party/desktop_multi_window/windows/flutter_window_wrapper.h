@@ -43,7 +43,30 @@ class FlutterWindowWrapper {
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
     if (method == "window_show") {
       if (hwnd_) {
-        ::ShowWindow(hwnd_, SW_SHOW);
+        bool inactive = false;
+        if (arguments) {
+          const auto inactive_it =
+              arguments->find(flutter::EncodableValue("inactive"));
+          if (inactive_it != arguments->end()) {
+            if (const auto* value =
+                    std::get_if<bool>(&inactive_it->second)) {
+              inactive = *value;
+            }
+          }
+        }
+        const bool is_bubble_window =
+            window_argument_.find("\"role\":\"bubble\"") !=
+            std::string::npos;
+        if (is_bubble_window) {
+          // Reassert topmost every time a reminder is shown. This prevents a
+          // maximized/full-screen window from covering the non-activating
+          // desktop overlay on Windows.
+          ::SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
+                             SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+        } else {
+          ::ShowWindow(hwnd_, inactive ? SW_SHOWNOACTIVATE : SW_SHOW);
+        }
       }
       result->Success();
     } else if (method == "window_hide") {

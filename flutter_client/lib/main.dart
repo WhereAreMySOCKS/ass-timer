@@ -16,28 +16,28 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 Future<void> main(List<String> args) async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await CrashReporter.instance.initialize();
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    CrashReporter.instance.recordSync(
-      details.exception,
-      details.stack ?? StackTrace.current,
-      context: details.context?.toDescription() ?? 'flutter_error',
-      fatal: true,
-    );
-  };
-  PlatformDispatcher.instance.onError = (error, stack) {
-    CrashReporter.instance.recordSync(
-      error,
-      stack,
-      context: 'platform_dispatcher',
-      fatal: true,
-    );
-    return true;
-  };
   await runZonedGuarded<Future<void>>(
     () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      await CrashReporter.instance.initialize();
+      FlutterError.onError = (details) {
+        FlutterError.presentError(details);
+        CrashReporter.instance.recordSync(
+          details.exception,
+          details.stack ?? StackTrace.current,
+          context: details.context?.toDescription() ?? 'flutter_error',
+          fatal: true,
+        );
+      };
+      PlatformDispatcher.instance.onError = (error, stack) {
+        CrashReporter.instance.recordSync(
+          error,
+          stack,
+          context: 'platform_dispatcher',
+          fatal: true,
+        );
+        return true;
+      };
       final startup = await DesktopHost.instance.initializeCurrentWindow();
       runApp(
         ProviderScope(
@@ -100,6 +100,8 @@ class _RootWindowState extends ConsumerState<_RootWindow>
     with WidgetsBindingObserver {
   bool? _lastOnboarding;
   bool _bubbleVisible = false;
+  PetDockSide? _bubbleDockSide;
+  bool _bubbleObedient = false;
   StreamSubscription<String>? _powerSubscription;
 
   @override
@@ -150,13 +152,23 @@ class _RootWindowState extends ConsumerState<_RootWindow>
       });
     }
     final hasBubble = controller.snapshot.bubbles.isNotEmpty;
-    if (_bubbleVisible != hasBubble) {
+    final dockSide = controller.snapshot.dockSide;
+    final obedient = controller.snapshot.config.appMode == AppMode.obedient;
+    final bubbleStateChanged = _bubbleVisible != hasBubble ||
+        (hasBubble && _bubbleDockSide != dockSide) ||
+        (hasBubble && _bubbleObedient != obedient);
+    if (bubbleStateChanged) {
       _bubbleVisible = hasBubble;
+      _bubbleDockSide = hasBubble ? dockSide : null;
+      _bubbleObedient = hasBubble && obedient;
       if (DesktopHost.instance.usesSeparateBubbleWindow) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           unawaited(
             hasBubble
-                ? DesktopHost.instance.showBubble()
+                ? DesktopHost.instance.showBubble(
+                    dockSide: dockSide,
+                    obedient: obedient,
+                  )
                 : DesktopHost.instance.hideBubble(),
           );
         });

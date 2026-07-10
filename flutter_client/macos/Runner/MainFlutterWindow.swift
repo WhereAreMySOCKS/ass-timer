@@ -17,6 +17,65 @@ private func configureTransparentFlutterSurface(_ controller: FlutterViewControl
 
 }
 
+private func configureOverlayWindow(_ window: NSWindow, enabled: Bool) {
+  let overlayBehaviors: NSWindow.CollectionBehavior = [
+    .canJoinAllSpaces,
+    .fullScreenAuxiliary,
+    .stationary,
+    .ignoresCycle,
+  ]
+
+  if enabled {
+    window.collectionBehavior.insert(overlayBehaviors)
+    // Menu-bar and pop-up-menu levels can still sit behind a foreground
+    // full-screen app. The screen-saver level plus `fullScreenAuxiliary`
+    // keeps this small, non-activating reminder overlay visible above every
+    // app space, including full-screen apps.
+    window.level = .screenSaver
+    window.isOpaque = false
+    window.backgroundColor = .clear
+    window.hasShadow = false
+    window.acceptsMouseMovedEvents = true
+    window.ignoresMouseEvents = false
+    window.orderFrontRegardless()
+  } else {
+    window.collectionBehavior.remove(overlayBehaviors)
+    window.level = .normal
+  }
+}
+
+private func registerDesktopHostChannel(_ controller: FlutterViewController) {
+  FlutterMethodChannel(
+    name: "ass_timer/desktop_host",
+    binaryMessenger: controller.engine.binaryMessenger
+  ).setMethodCallHandler { call, result in
+    switch call.method {
+    case "setActivationPolicy":
+      let policy = call.arguments as? String
+      NSApp.setActivationPolicy(policy == "regular" ? .regular : .accessory)
+      if policy == "regular" {
+        NSApp.activate(ignoringOtherApps: true)
+      }
+      result(nil)
+    case "setOverlayWindow":
+      let arguments = call.arguments as? [String: Any]
+      let enabled = arguments?["enabled"] as? Bool ?? false
+      guard let window = controller.view.window else {
+        result(FlutterError(
+          code: "WINDOW_UNAVAILABLE",
+          message: "Flutter view is not attached to an NSWindow",
+          details: nil
+        ))
+        return
+      }
+      configureOverlayWindow(window, enabled: enabled)
+      result(nil)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+}
+
 private final class PowerEventStreamHandler: NSObject, FlutterStreamHandler {
   private var sink: FlutterEventSink?
 
@@ -136,6 +195,13 @@ private enum ForegroundRemoval {
 class MainFlutterWindow: NSWindow {
   private let powerEvents = PowerEventStreamHandler()
 
+  // AppKit does not let borderless windows become key/main by default. The
+  // pet window is converted to borderless after onboarding, but it must still
+  // receive Flutter button and gesture events when the accessory app is not
+  // currently active.
+  override var canBecomeKey: Bool { true }
+  override var canBecomeMain: Bool { true }
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     configureTransparentFlutterSurface(flutterViewController)
@@ -148,9 +214,11 @@ class MainFlutterWindow: NSWindow {
     self.acceptsMouseMovedEvents = true
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    registerDesktopHostChannel(flutterViewController)
     FlutterMultiWindowPlugin.setOnWindowCreatedCallback { controller in
       configureTransparentFlutterSurface(controller)
       RegisterGeneratedPlugins(registry: controller)
+      registerDesktopHostChannel(controller)
     }
 
     let messenger = flutterViewController.engine.binaryMessenger
@@ -210,23 +278,6 @@ class MainFlutterWindow: NSWindow {
         } else {
           result(false)
         }
-      default:
-        result(FlutterMethodNotImplemented)
-      }
-    }
-
-    FlutterMethodChannel(
-      name: "ass_timer/desktop_host",
-      binaryMessenger: messenger
-    ).setMethodCallHandler { call, result in
-      switch call.method {
-      case "setActivationPolicy":
-        let policy = call.arguments as? String
-        NSApp.setActivationPolicy(policy == "regular" ? .regular : .accessory)
-        if policy == "regular" {
-          NSApp.activate(ignoringOtherApps: true)
-        }
-        result(nil)
       default:
         result(FlutterMethodNotImplemented)
       }
