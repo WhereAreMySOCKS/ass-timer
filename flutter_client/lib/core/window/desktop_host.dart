@@ -82,7 +82,9 @@ Offset calculateBubbleWindowPosition({
         x = petPosition.dx - bubbleSize.width + petSpriteLeadingInset;
         y = petPosition.dy + (petSize.height - bubbleSize.height) / 2;
       case null:
-        x = petPosition.dx + (petSize.width - bubbleSize.width) / 2;
+        final spriteCenterX =
+            petPosition.dx + petSpriteLeadingInset + petSpriteWidth / 2;
+        x = spriteCenterX - bubbleSize.width / 2;
         y = petPosition.dy - bubbleSize.height + 20;
     }
   }
@@ -187,9 +189,7 @@ class DesktopHost with TrayListener, WindowListener {
       WindowRole.controlCenter => WindowOptions(
           size: _controlSizeFor(arguments.route ?? ControlRoute.timer),
           minimumSize:
-              (arguments.route ?? ControlRoute.timer) == ControlRoute.chat
-                  ? const Size(560, 380)
-                  : _controlSizeFor(arguments.route ?? ControlRoute.timer),
+              _minimumControlSizeFor(arguments.route ?? ControlRoute.timer),
           center: true,
           backgroundColor: Colors.white,
           skipTaskbar: false,
@@ -724,7 +724,7 @@ class DesktopHost with TrayListener, WindowListener {
       await windowManager.setSkipTaskbar(false);
       await windowManager.setTitleBarStyle(TitleBarStyle.normal);
       await windowManager.setResizable(false);
-      await windowManager.setSize(const Size(680, 365));
+      await windowManager.setSize(const Size(720, 420));
       await windowManager.center();
       await windowManager.show();
       await windowManager.focus();
@@ -910,13 +910,23 @@ class DesktopHost with TrayListener, WindowListener {
   }
 
   static Size _controlSizeFor(ControlRoute route) => switch (route) {
-        ControlRoute.chat => const Size(620, 440),
-        ControlRoute.leaderboard => const Size(320, 420),
+        ControlRoute.chat => const Size(720, 500),
+        ControlRoute.leaderboard => const Size(380, 480),
         ControlRoute.timer ||
         ControlRoute.groups ||
         ControlRoute.media ||
         ControlRoute.about =>
-          const Size(420, 468),
+          const Size(480, 560),
+      };
+
+  static Size _minimumControlSizeFor(ControlRoute route) => switch (route) {
+        ControlRoute.chat => const Size(620, 440),
+        ControlRoute.leaderboard => const Size(340, 420),
+        ControlRoute.timer ||
+        ControlRoute.groups ||
+        ControlRoute.media ||
+        ControlRoute.about =>
+          const Size(440, 500),
       };
 
   Future<void> _resizeControlWindow(ControlRoute route) async {
@@ -938,12 +948,8 @@ class DesktopHost with TrayListener, WindowListener {
     await windowManager.setTitleBarStyle(
       settingsRoute ? TitleBarStyle.hidden : TitleBarStyle.normal,
     );
-    await windowManager.setMinimumSize(
-      route == ControlRoute.chat
-          ? const Size(560, 380)
-          : _controlSizeFor(route),
-    );
-    await windowManager.setResizable(route == ControlRoute.chat);
+    await windowManager.setMinimumSize(_minimumControlSizeFor(route));
+    await windowManager.setResizable(true);
     await windowManager.setSize(_controlSizeFor(route), animate: true);
   }
 

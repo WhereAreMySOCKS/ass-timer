@@ -8,7 +8,9 @@ enum PetActivityPhase { standing, walking, flying, napping }
 
 enum PetDockSide { left, right }
 
-enum BubbleKind { reminder, groupEvent, chatMessage }
+enum BubbleKind { reminder, feedback, groupEvent, chatMessage }
+
+enum BubbleFeedbackTone { success, warning }
 
 enum BackendConnectionState { disconnected, connecting, connected }
 
@@ -203,6 +205,7 @@ class BubbleItem {
     this.senderAvatarUrl,
     this.groupId,
     this.message,
+    this.feedbackTone,
   });
 
   factory BubbleItem.fromJson(Map<String, dynamic> json) => BubbleItem(
@@ -214,6 +217,11 @@ class BubbleItem {
         senderAvatarUrl: json['senderAvatarUrl'] as String?,
         groupId: json['groupId'] as String?,
         message: json['message'] as String?,
+        feedbackTone: json['feedbackTone'] == null
+            ? null
+            : BubbleFeedbackTone.values.byName(
+                json['feedbackTone'] as String,
+              ),
       );
 
   final String id;
@@ -224,8 +232,13 @@ class BubbleItem {
   final String? senderAvatarUrl;
   final String? groupId;
   final String? message;
+  final BubbleFeedbackTone? feedbackTone;
 
-  int get priority => kind == BubbleKind.reminder ? 0 : 1;
+  int get priority => switch (kind) {
+        BubbleKind.reminder => 0,
+        BubbleKind.feedback => 1,
+        BubbleKind.groupEvent || BubbleKind.chatMessage => 2,
+      };
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
@@ -236,6 +249,7 @@ class BubbleItem {
         'senderAvatarUrl': senderAvatarUrl,
         'groupId': groupId,
         'message': message,
+        'feedbackTone': feedbackTone?.name,
       };
 }
 

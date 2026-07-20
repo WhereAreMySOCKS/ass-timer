@@ -2,58 +2,108 @@ import 'dart:math' as math;
 
 import 'package:ass_timer_flutter/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-class CircularIntervalPicker extends StatelessWidget {
+class CircularIntervalPicker extends StatefulWidget {
   const CircularIntervalPicker({
     required this.seconds,
     required this.onChanged,
     super.key,
+    this.onChangeEnd,
   });
 
   final int seconds;
   final ValueChanged<int> onChanged;
+  final ValueChanged<int>? onChangeEnd;
 
-  double get _progress => (seconds.clamp(10, 7200) - 10) / 7190;
+  static String formatInterval(int value) {
+    if (value < 60) return '$value 秒';
+    final minutes = value ~/ 60;
+    final remaining = value % 60;
+    return remaining == 0 ? '$minutes 分钟' : '$minutes 分 $remaining 秒';
+  }
 
   @override
-  Widget build(BuildContext context) => Semantics(
-        label: '提醒间隔',
-        value: formatInterval(seconds),
-        slider: true,
-        child: SizedBox.square(
-          dimension: 190,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onPanDown: (details) =>
-                _update(details.localPosition, const Size.square(190)),
-            onPanUpdate: (details) =>
-                _update(details.localPosition, const Size.square(190)),
-            child: CustomPaint(
-              painter: _IntervalPainter(progress: _progress),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text('每', style: Theme.of(context).textTheme.bodySmall),
-                    const SizedBox(height: 6),
-                    Text(
-                      formatInterval(seconds),
-                      style: const TextStyle(
-                        color: AppColors.text,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w600,
-                        fontFeatures: <FontFeature>[
-                          FontFeature.tabularFigures()
+  State<CircularIntervalPicker> createState() => _CircularIntervalPickerState();
+}
+
+class _CircularIntervalPickerState extends State<CircularIntervalPicker> {
+  int? _dragValue;
+
+  double get _progress => (widget.seconds.clamp(10, 7200) - 10) / 7190;
+
+  @override
+  Widget build(BuildContext context) => CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.arrowRight): () => _nudge(5),
+          const SingleActivator(LogicalKeyboardKey.arrowUp): () => _nudge(5),
+          const SingleActivator(LogicalKeyboardKey.arrowLeft): () => _nudge(-5),
+          const SingleActivator(LogicalKeyboardKey.arrowDown): () => _nudge(-5),
+        },
+        child: Focus(
+          child: Builder(
+            builder: (focusContext) => Semantics(
+              label: '提醒间隔',
+              value: CircularIntervalPicker.formatInterval(widget.seconds),
+              increasedValue: CircularIntervalPicker.formatInterval(
+                (widget.seconds + 5).clamp(10, 7200),
+              ),
+              decreasedValue: CircularIntervalPicker.formatInterval(
+                (widget.seconds - 5).clamp(10, 7200),
+              ),
+              slider: true,
+              onIncrease: () => _nudge(5),
+              onDecrease: () => _nudge(-5),
+              child: SizedBox.square(
+                dimension: 190,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onPanDown: (details) {
+                    Focus.of(focusContext).requestFocus();
+                    _update(details.localPosition, const Size.square(190));
+                  },
+                  onPanUpdate: (details) =>
+                      _update(details.localPosition, const Size.square(190)),
+                  onPanEnd: (_) => _commitDrag(),
+                  onPanCancel: _commitDrag,
+                  child: CustomPaint(
+                    painter: _IntervalPainter(progress: _progress),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text('每',
+                              style: Theme.of(context).textTheme.bodySmall),
+                          const SizedBox(height: 6),
+                          Text(
+                            CircularIntervalPicker.formatInterval(
+                              widget.seconds,
+                            ),
+                            style: const TextStyle(
+                              color: AppColors.text,
+                              fontSize: 26,
+                              fontWeight: FontWeight.w600,
+                              fontFeatures: <FontFeature>[
+                                FontFeature.tabularFigures()
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
       );
+
+  void _nudge(int delta) {
+    final value = (widget.seconds + delta).clamp(10, 7200);
+    widget.onChanged(value);
+    widget.onChangeEnd?.call(value);
+  }
 
   void _update(Offset point, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
@@ -64,14 +114,14 @@ class CircularIntervalPicker extends StatelessWidget {
     if (_progress > 0.85 && ratio < 0.15) ratio = 1;
     if (_progress < 0.15 && ratio > 0.85) ratio = 0;
     final raw = 10 + ratio * 7190;
-    onChanged(((raw / 5).round() * 5).clamp(10, 7200));
+    final value = ((raw / 5).round() * 5).clamp(10, 7200);
+    _dragValue = value;
+    widget.onChanged(value);
   }
 
-  static String formatInterval(int value) {
-    if (value < 60) return '$value 秒';
-    final minutes = value ~/ 60;
-    final remaining = value % 60;
-    return remaining == 0 ? '$minutes 分钟' : '$minutes 分 $remaining 秒';
+  void _commitDrag() {
+    widget.onChangeEnd?.call(_dragValue ?? widget.seconds);
+    _dragValue = null;
   }
 }
 

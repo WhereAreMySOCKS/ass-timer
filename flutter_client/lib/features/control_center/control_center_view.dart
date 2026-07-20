@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:ass_timer_flutter/application/app_controller.dart';
 import 'package:ass_timer_flutter/core/theme/app_theme.dart';
+import 'package:ass_timer_flutter/core/widgets/app_components.dart';
 import 'package:ass_timer_flutter/data/api_models.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:ass_timer_flutter/features/onboarding/circular_interval_picker.dart';
@@ -51,25 +52,29 @@ class _ControlCenterViewState extends ConsumerState<ControlCenterView> {
       );
     }
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      body: Column(
+      backgroundColor: AppColors.canvas,
+      body: Row(
         children: <Widget>[
-          _SettingsTabBar(
+          _SettingsSidebar(
             selected: route,
             onSelected: controller.selectControlRoute,
           ),
-          const Divider(height: 1),
+          const VerticalDivider(width: 1),
           Expanded(
             child: Column(
               children: <Widget>[
-                if (controller.snapshot.lastError != null)
-                  MaterialBanner(
-                    content: Text(controller.snapshot.lastError!),
-                    leading: const Icon(
-                      Icons.error_outline,
-                      color: AppColors.danger,
+                if (controller.snapshot.lastError != null &&
+                    route != ControlRoute.groups)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: AppInlineNotice(
+                      message: controller.snapshot.lastError!,
+                      tone: AppFeedbackTone.danger,
+                      actionLabel: route == ControlRoute.groups ? '重试' : null,
+                      onAction: route == ControlRoute.groups
+                          ? controller.refreshGroups
+                          : null,
                     ),
-                    actions: const <Widget>[SizedBox.shrink()],
                   ),
                 Expanded(
                   child: switch (route) {
@@ -107,14 +112,16 @@ class _SecondaryWindowScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: AppColors.surface,
+        backgroundColor: AppColors.canvas,
         body: Column(
           children: <Widget>[
             if (controller.snapshot.lastError != null)
-              MaterialBanner(
-                content: Text(controller.snapshot.lastError!),
-                leading: const Icon(Icons.wifi_off, color: AppColors.danger),
-                actions: const <Widget>[SizedBox.shrink()],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                child: AppInlineNotice(
+                  message: controller.snapshot.lastError!,
+                  tone: AppFeedbackTone.danger,
+                ),
               ),
             Expanded(
               child: Padding(padding: padding, child: child),
@@ -124,53 +131,79 @@ class _SecondaryWindowScaffold extends StatelessWidget {
       );
 }
 
-class _SettingsTabBar extends StatelessWidget {
-  const _SettingsTabBar({required this.selected, required this.onSelected});
+class _SettingsSidebar extends StatelessWidget {
+  const _SettingsSidebar({required this.selected, required this.onSelected});
 
   final ControlRoute selected;
   final ValueChanged<ControlRoute> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    const entries = <(ControlRoute, String)>[
-      (ControlRoute.timer, '提醒'),
-      (ControlRoute.groups, '群组'),
-      (ControlRoute.media, '素材'),
-      (ControlRoute.about, '关于'),
+    const entries = <(ControlRoute, String, IconData)>[
+      (ControlRoute.timer, '提醒', Icons.timer_rounded),
+      (ControlRoute.groups, '群组', Icons.groups_rounded),
+      (ControlRoute.media, '素材', Icons.photo_library_rounded),
+      (ControlRoute.about, '关于', Icons.info_rounded),
     ];
     return ColoredBox(
-      color: Colors.white,
+      color: AppColors.sidebar,
       child: SizedBox(
-        height: 52,
-        child: Stack(
+        width: 120,
+        child: Column(
           children: <Widget>[
-            const Positioned.fill(child: DragToMoveArea(child: SizedBox())),
-            Center(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.035),
-                  borderRadius: BorderRadius.circular(20),
-                ),
+            const SizedBox(
+              height: 54,
+              child: DragToMoveArea(
                 child: Padding(
-                  padding: const EdgeInsets.all(3),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      for (var index = 0; index < entries.length; index++) ...[
-                        if (index > 0)
-                          Container(
-                            width: 1,
-                            height: 18,
-                            color: Colors.black.withValues(alpha: 0.07),
-                          ),
-                        _SettingsTabButton(
-                          label: entries[index].$2,
-                          selected: selected == entries[index].$1,
-                          onPressed: () => onSelected(entries[index].$1),
-                        ),
-                      ],
-                    ],
+                  padding: EdgeInsets.fromLTRB(14, 18, 10, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '该提肛了',
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Column(
+                children: <Widget>[
+                  for (final entry in entries)
+                    _SettingsNavButton(
+                      label: entry.$2,
+                      icon: entry.$3,
+                      selected: selected == entry.$1,
+                      onPressed: () => onSelected(entry.$1),
+                    ),
+                ],
+              ),
+            ),
+            const Spacer(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: Image.asset(
+                'assets/sprites/得意.png',
+                width: 72,
+                height: 88,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(12, 0, 12, 16),
+              child: Text(
+                '认真，但别太紧张。',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.secondaryText,
+                  fontSize: 10.5,
+                  height: 1.35,
                 ),
               ),
             ),
@@ -181,14 +214,16 @@ class _SettingsTabBar extends StatelessWidget {
   }
 }
 
-class _SettingsTabButton extends StatelessWidget {
-  const _SettingsTabButton({
+class _SettingsNavButton extends StatelessWidget {
+  const _SettingsNavButton({
     required this.label,
+    required this.icon,
     required this.selected,
     required this.onPressed,
   });
 
   final String label;
+  final IconData icon;
   final bool selected;
   final VoidCallback onPressed;
 
@@ -197,27 +232,39 @@ class _SettingsTabButton extends StatelessWidget {
         selected: selected,
         button: true,
         label: label,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(17),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            height: 32,
-            constraints: const BoxConstraints(minWidth: 54),
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: selected
-                  ? Colors.black.withValues(alpha: 0.075)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(17),
-            ),
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: selected ? AppColors.text : AppColors.secondaryText,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(10),
+            child: AnimatedContainer(
+              duration: context.visualTokens.transitionDuration,
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: selected ? AppColors.surface : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                border: selected ? Border.all(color: AppColors.border) : null,
+              ),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    icon,
+                    size: 18,
+                    color:
+                        selected ? AppColors.accent : AppColors.secondaryText,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                      color:
+                          selected ? AppColors.text : AppColors.secondaryText,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -232,24 +279,7 @@ class _PaneTitle extends StatelessWidget {
   final String? subtitle;
 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            title,
-            style: const TextStyle(
-              color: AppColors.text,
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          if (subtitle != null) ...<Widget>[
-            const SizedBox(height: 4),
-            Text(subtitle!, style: Theme.of(context).textTheme.bodySmall),
-          ],
-          const SizedBox(height: 20),
-        ],
-      );
+  Widget build(BuildContext context) => AppPageTitle(title, subtitle: subtitle);
 }
 
 class _TimerPane extends StatefulWidget {
@@ -272,8 +302,8 @@ class _TimerPaneState extends State<_TimerPane> {
     super.dispose();
   }
 
-  Future<void> _save() async {
-    await widget.controller.modifyInterval(seconds);
+  Future<void> _save(int value) async {
+    await widget.controller.modifyInterval(value);
     if (!mounted) return;
     savedTimer?.cancel();
     setState(() => saved = true);
@@ -284,25 +314,38 @@ class _TimerPaneState extends State<_TimerPane> {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(20),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
+            const AppPageTitle(
+              '提醒节奏',
+              subtitle: '拖到合适的位置，松手就保存。别调太狠。',
+            ),
             const Spacer(),
-            CircularIntervalPicker(
-              seconds: seconds,
-              onChanged: (value) => setState(() => seconds = value),
+            Center(
+              child: CircularIntervalPicker(
+                seconds: seconds,
+                onChanged: (value) => setState(() {
+                  seconds = value;
+                  saved = false;
+                }),
+                onChangeEnd: _save,
+              ),
             ),
             const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _save,
-                icon: Icon(
-                  saved ? Icons.check : Icons.arrow_circle_down_outlined,
-                  size: 17,
-                ),
-                label: Text(saved ? '已保存' : '保存设置'),
-              ),
+            AnimatedSwitcher(
+              duration: context.visualTokens.transitionDuration,
+              child: saved
+                  ? const AppInlineNotice(
+                      key: ValueKey<String>('interval-saved'),
+                      message: '行，新的节奏记住了。',
+                      tone: AppFeedbackTone.success,
+                    )
+                  : const AppInlineNotice(
+                      key: ValueKey<String>('interval-preview'),
+                      message: '方向键也能微调，每次 5 秒。',
+                    ),
             ),
             const Spacer(),
           ],
@@ -319,10 +362,14 @@ class _GroupsPane extends StatefulWidget {
   State<_GroupsPane> createState() => _GroupsPaneState();
 }
 
+enum _GroupAction { create, join }
+
 class _GroupsPaneState extends State<_GroupsPane> {
   final createController = TextEditingController();
   final joinController = TextEditingController();
   final Set<String> expandedGroups = <String>{};
+  _GroupAction? activeAction;
+  bool submitting = false;
 
   @override
   void dispose() {
@@ -336,7 +383,29 @@ class _GroupsPaneState extends State<_GroupsPane> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _buildHeader(),
+          if (widget.controller.snapshot.lastError != null &&
+              activeAction == null) ...<Widget>[
+            const SizedBox(height: 12),
+            AppInlineNotice(
+              message: widget.controller.snapshot.lastError!,
+              tone: AppFeedbackTone.danger,
+              actionLabel: '重试',
+              onAction: widget.controller.refreshGroups,
+            ),
+          ],
           const SizedBox(height: 12),
+          AnimatedSize(
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : context.visualTokens.transitionDuration,
+            alignment: Alignment.topCenter,
+            child: activeAction == null
+                ? const SizedBox(width: double.infinity)
+                : Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildInlineForm(activeAction!),
+                  ),
+          ),
           Expanded(
             child: widget.controller.groups.isEmpty
                 ? _buildEmptyState()
@@ -395,7 +464,7 @@ class _GroupsPaneState extends State<_GroupsPane> {
           width: 320,
           padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             border: Border.all(color: AppColors.border),
             borderRadius: BorderRadius.circular(8),
           ),
@@ -429,12 +498,12 @@ class _GroupsPaneState extends State<_GroupsPane> {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         border: Border.all(color: AppColors.border),
         borderRadius: BorderRadius.circular(8),
         boxShadow: <BoxShadow>[
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.035),
+            color: AppColors.text.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -459,7 +528,7 @@ class _GroupsPaneState extends State<_GroupsPane> {
                       ),
                       child: const Icon(
                         Icons.groups_2_outlined,
-                        color: Color(0xFF174A8B),
+                        color: AppColors.accent,
                         size: 22,
                       ),
                     ),
@@ -588,7 +657,7 @@ class _GroupsPaneState extends State<_GroupsPane> {
         children: <Widget>[
           CircleAvatar(
             radius: 11,
-            backgroundColor: Colors.white,
+            backgroundColor: AppColors.surface,
             child: Text(member.petEmoji, style: const TextStyle(fontSize: 11)),
           ),
           const SizedBox(width: 6),
@@ -624,23 +693,29 @@ class _GroupsPaneState extends State<_GroupsPane> {
           padding: const EdgeInsets.only(top: 12),
           child: Row(
             children: <Widget>[
-              SizedBox(
-                height: 40,
-                width: 148,
-                child: FilledButton.icon(
-                  onPressed: _showCreate,
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('创建群组'),
+              Expanded(
+                child: SizedBox(
+                  height: 40,
+                  child: FilledButton.icon(
+                    onPressed: () => _toggleAction(_GroupAction.create),
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: Text(
+                      activeAction == _GroupAction.create ? '收起' : '创建群组',
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
-              SizedBox(
-                height: 40,
-                width: 148,
-                child: OutlinedButton.icon(
-                  onPressed: _showJoin,
-                  icon: const Icon(Icons.login_rounded, size: 18),
-                  label: const Text('加入群组'),
+              Expanded(
+                child: SizedBox(
+                  height: 40,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _toggleAction(_GroupAction.join),
+                    icon: const Icon(Icons.login_rounded, size: 18),
+                    label: Text(
+                      activeAction == _GroupAction.join ? '收起' : '加入群组',
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -656,77 +731,121 @@ class _GroupsPaneState extends State<_GroupsPane> {
         }
       });
 
-  Future<void> _showCreate() => _textDialog(
-        title: '创建群组',
-        label: '群组名称',
-        controller: createController,
-        onSubmit: () => widget.controller.createGroup(createController.text),
-      );
+  void _toggleAction(_GroupAction action) => setState(() {
+        activeAction = activeAction == action ? null : action;
+        if (activeAction == _GroupAction.create) createController.clear();
+        if (activeAction == _GroupAction.join) joinController.clear();
+      });
 
-  Future<void> _showJoin() => _textDialog(
-        title: '加入群组',
-        label: '6 位邀请码',
-        controller: joinController,
-        onSubmit: () => widget.controller.joinGroup(joinController.text),
-      );
-
-  Future<void> _textDialog({
-    required String title,
-    required String label,
-    required TextEditingController controller,
-    required Future<void> Function() onSubmit,
-  }) async {
-    controller.clear();
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(labelText: label),
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: Navigator.of(context).pop,
-            child: const Text('取消'),
+  Widget _buildInlineForm(_GroupAction action) {
+    final creating = action == _GroupAction.create;
+    final controller = creating ? createController : joinController;
+    return AppCard(
+      color: AppColors.muted,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            creating ? '拉个群，互相监督' : '拿邀请码进群',
+            style: Theme.of(context).textTheme.titleMedium,
           ),
-          FilledButton(
-            onPressed: () async {
-              try {
-                await onSubmit();
-                if (context.mounted) Navigator.of(context).pop();
-              } on Object {
-                // The controller exposes the localized error in the banner.
-              }
-            },
-            child: const Text('确认'),
+          const SizedBox(height: 4),
+          Text(
+            creating ? '名字随便起，别超过 50 个字。' : '邀请码一共 6 位，不分大小写。',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller,
+            autofocus: true,
+            enabled: !submitting,
+            maxLength: creating ? 50 : 6,
+            textCapitalization: TextCapitalization.characters,
+            inputFormatters: creating
+                ? null
+                : <TextInputFormatter>[
+                    LengthLimitingTextInputFormatter(6),
+                    FilteringTextInputFormatter.allow(RegExp('[a-zA-Z0-9]')),
+                    _UpperCaseTextFormatter(),
+                  ],
+            decoration: InputDecoration(
+              labelText: creating ? '群组名称' : '6 位邀请码',
+              counterText: '',
+              errorText: widget.controller.snapshot.lastError,
+            ),
+            onSubmitted: (_) => _submitAction(action),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: <Widget>[
+              TextButton(
+                onPressed: submitting ? null : () => _toggleAction(action),
+                child: const Text('取消'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: submitting ? null : () => _submitAction(action),
+                icon: submitting
+                    ? const SizedBox.square(
+                        dimension: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        creating
+                            ? Icons.group_add_rounded
+                            : Icons.login_rounded,
+                        size: 17,
+                      ),
+                label: Text(creating ? '创建' : '加入'),
+              ),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _submitAction(_GroupAction action) async {
+    if (submitting) return;
+    final creating = action == _GroupAction.create;
+    final value = (creating ? createController : joinController).text.trim();
+    if (value.isEmpty || (!creating && value.length != 6)) return;
+    setState(() => submitting = true);
+    try {
+      if (creating) {
+        await widget.controller.createGroup(value);
+      } else {
+        await widget.controller.joinGroup(value);
+      }
+      if (mounted) setState(() => activeAction = null);
+    } on Object {
+      // The controller provides localized inline recovery text.
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
   }
 
   Future<void> _confirmLeave(GroupInfo group) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('退出群组？'),
-        content: Text('确定退出“${group.name}”吗？'),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('退出'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: '退出群组？',
+      message: '退出“${group.name}”后，你将不再收到这个群组的同步记录和消息。',
+      confirmLabel: '退出群组',
+      destructive: true,
     );
-    if (confirmed == true) await widget.controller.leaveGroup(group.groupId);
+    if (confirmed) await widget.controller.leaveGroup(group.groupId);
   }
+}
+
+class _UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) =>
+      newValue.copyWith(text: newValue.text.toUpperCase());
 }
 
 class _MetaPill extends StatelessWidget {
@@ -803,7 +922,7 @@ class _InviteCodeCell extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: AppColors.accentSoft,
-          border: Border.all(color: const Color(0xFFC8DCF7)),
+          border: Border.all(color: AppColors.accent.withValues(alpha: 0.22)),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
@@ -875,20 +994,20 @@ class _ChatPaneState extends State<_ChatPane> {
           Expanded(
             child: Container(
               decoration: widget.standalone
-                  ? const BoxDecoration(color: Colors.white)
+                  ? const BoxDecoration(color: AppColors.surface)
                   : BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.surface,
                       border: Border.all(color: AppColors.border),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(14),
                     ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(widget.standalone ? 0 : 10),
+                borderRadius: BorderRadius.circular(widget.standalone ? 0 : 14),
                 child: Row(
                   children: <Widget>[
                     SizedBox(
                       width: 150,
-                      child: ColoredBox(
-                        color: AppColors.muted,
+                      child: Material(
+                        color: AppColors.sidebar,
                         child: ListView.builder(
                           padding: const EdgeInsets.all(6),
                           itemCount: joined.length,
@@ -904,9 +1023,14 @@ class _ChatPaneState extends State<_ChatPane> {
                                 minTileHeight: 42,
                                 dense: true,
                                 selected: isSelected,
-                                selectedTileColor: Colors.white,
+                                selectedTileColor: AppColors.surface,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(7),
+                                  side: BorderSide(
+                                    color: isSelected
+                                        ? AppColors.border
+                                        : Colors.transparent,
+                                  ),
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
                                 title: Text(
                                   group.groupName,
@@ -940,7 +1064,7 @@ class _ChatPaneState extends State<_ChatPane> {
                                         selectedJoinedGroup?.groupName ??
                                         '群聊',
                                     style: const TextStyle(
-                                      fontWeight: FontWeight.w500,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                 ),
@@ -973,7 +1097,11 @@ class _ChatPaneState extends State<_ChatPane> {
                           const Divider(height: 1),
                           Expanded(
                             child: messages.isEmpty
-                                ? const Center(child: Text('还没有消息'))
+                                ? const Center(
+                                    child: AppInlineNotice(
+                                      message: '还没开聊。说句话，别只盯着看。',
+                                    ),
+                                  )
                                 : ListView.builder(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 12,
@@ -1004,7 +1132,7 @@ class _ChatPaneState extends State<_ChatPane> {
                                     maxLength: 2000,
                                     onSubmitted: (_) => _send(selected),
                                     decoration: const InputDecoration(
-                                      hintText: '输入消息',
+                                      hintText: '说点什么…',
                                       counterText: '',
                                     ),
                                   ),
@@ -1079,10 +1207,15 @@ class _ChatMessageRow extends StatelessWidget {
     final bubble = Flexible(
       child: Container(
         constraints: const BoxConstraints(maxWidth: 360),
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: own ? AppColors.accentSoft : AppColors.muted,
-          borderRadius: BorderRadius.circular(9),
+          color: own ? AppColors.accentSoft : AppColors.surface,
+          border: Border.all(
+            color: own
+                ? AppColors.accent.withValues(alpha: 0.22)
+                : AppColors.border,
+          ),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1226,7 +1359,7 @@ class _ConnectionBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (color, label) = switch (state) {
       BackendConnectionState.connected => (AppColors.success, '实时已连接'),
-      BackendConnectionState.connecting => (const Color(0xFFB56A00), '正在重连'),
+      BackendConnectionState.connecting => (AppColors.warning, '正在重连'),
       BackendConnectionState.disconnected => (AppColors.danger, '实时已断开'),
     };
     return Tooltip(
@@ -1295,7 +1428,7 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
         if (widget.standalone)
           Row(
             children: <Widget>[
-              const Icon(Icons.emoji_events, color: Color(0xFFD99A00)),
+              const Icon(Icons.emoji_events_rounded, color: AppColors.coral),
               const SizedBox(width: 7),
               const Text(
                 '排行榜',
@@ -1303,23 +1436,27 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
               ),
               const Spacer(),
               if (groups.isNotEmpty && selected != null)
-                DropdownButton<String>(
-                  value: selected,
-                  underline: const SizedBox.shrink(),
-                  items: groups
-                      .map(
-                        (group) => DropdownMenuItem(
-                          value: group.groupId,
-                          child: Text(
-                            group.groupName,
-                            overflow: TextOverflow.ellipsis,
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 120),
+                  child: DropdownButton<String>(
+                    value: selected,
+                    isExpanded: true,
+                    underline: const SizedBox.shrink(),
+                    items: groups
+                        .map(
+                          (group) => DropdownMenuItem(
+                            value: group.groupId,
+                            child: Text(
+                              group.groupName,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) _selectGroup(value);
-                  },
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) _selectGroup(value);
+                    },
+                  ),
                 ),
               IconButton(
                 tooltip: '刷新排行榜',
@@ -1408,8 +1545,13 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
                                 decoration: BoxDecoration(
                                   color: own
                                       ? AppColors.accentSoft
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(8),
+                                      : entry.rank <= 3
+                                          ? AppColors.muted
+                                          : Colors.transparent,
+                                  border: entry.rank <= 3 || own
+                                      ? Border.all(color: AppColors.border)
+                                      : null,
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: ListTile(
                                   leading: SizedBox(
@@ -1496,11 +1638,13 @@ class _MediaPane extends StatelessWidget {
           Expanded(
             child: GridView.builder(
               padding: const EdgeInsets.only(bottom: 14),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
-                childAspectRatio: 1.12,
+                mainAxisExtent: MediaQuery.textScalerOf(context).scale(1) >= 1.3
+                    ? 196
+                    : 174,
               ),
               itemCount: slots.length,
               itemBuilder: (context, index) => _MediaSlotCard(
@@ -1542,8 +1686,9 @@ class _MediaSlotCard extends StatelessWidget {
     final entry = controller.snapshot.config.customActionMedia[slot.$1];
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.035),
-        borderRadius: BorderRadius.circular(11),
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Padding(
         padding: const EdgeInsets.all(8),
@@ -1636,7 +1781,7 @@ class _MediaSlotCard extends StatelessWidget {
   }
 
   ButtonStyle get _mediaActionButtonStyle => OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 30),
+        minimumSize: const Size(0, 34),
         padding: const EdgeInsets.symmetric(horizontal: 4),
         textStyle: const TextStyle(fontSize: 11),
         visualDensity: VisualDensity.compact,
@@ -1660,9 +1805,9 @@ class _MediaPreview extends StatelessWidget {
         width: double.infinity,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.035),
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+          color: AppColors.muted,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.border),
         ),
         child: entry == null
             ? Image.asset(fallbackAsset, fit: BoxFit.contain)
@@ -1703,132 +1848,156 @@ class _AboutPaneState extends State<_AboutPane> {
   @override
   Widget build(BuildContext context) => FutureBuilder<PackageInfo>(
         future: packageInfo,
-        builder: (context, snapshot) => Padding(
+        builder: (context, snapshot) => ListView(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            children: <Widget>[
-              AppCard(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: <Widget>[
-                    _UserAvatar(
-                      controller: controller,
-                      avatarUrl: controller.snapshot.config.avatarUrl ?? '',
-                      fallback: controller.snapshot.config.petEmoji,
-                      size: 48,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            controller.snapshot.config.nickname ?? '未设置昵称',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            '账户头像',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
-                    ),
-                    OutlinedButton(
-                      onPressed: uploadingAvatar ? null : _chooseAvatar,
-                      child: uploadingAvatar
-                          ? const SizedBox.square(
-                              dimension: 13,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('选择'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              AppCard(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    Row(
+          children: <Widget>[
+            const AppPageTitle(
+              '关于与账户',
+              subtitle: '头像、版本信息和本地数据都在这里。',
+            ),
+            const SizedBox(height: 16),
+            AppCard(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: <Widget>[
+                  _UserAvatar(
+                    controller: controller,
+                    avatarUrl: controller.snapshot.config.avatarUrl ?? '',
+                    fallback: controller.snapshot.config.petEmoji,
+                    size: 48,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Icon(
-                          controller.availableUpdate == null
-                              ? Icons.check_circle
-                              : Icons.system_update_alt,
-                          size: 18,
-                          color: controller.availableUpdate == null
-                              ? const Color(0xFF32C759)
-                              : Colors.orange,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            controller.availableUpdate == null
-                                ? '已是最新版本'
-                                : '发现新版本 ${controller.availableUpdate!.latestVersion}',
-                            style: Theme.of(context).textTheme.bodySmall,
+                        Text(
+                          controller.snapshot.config.nickname ?? '未设置昵称',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                           ),
+                        ),
+                        Text(
+                          '账户头像',
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
                     ),
-                    const SizedBox(height: 5),
-                    Text(
-                      '当前版本 v${snapshot.data?.version ?? '—'}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    if (controller.availableUpdate != null &&
-                        controller.availableUpdate!.releaseNotes
-                            .isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(controller.availableUpdate!.releaseNotes),
-                    ],
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: () => controller.checkForUpdate(),
-                      icon: const Icon(Icons.refresh, size: 17),
-                      label: const Text('检查更新'),
-                    ),
-                    if (controller.availableUpdate != null) ...<Widget>[
-                      const SizedBox(height: 8),
-                      FilledButton.icon(
-                        onPressed: () => launchUrl(
-                          Uri.parse(controller.availableUpdate!.downloadUrl),
+                  ),
+                  OutlinedButton(
+                    onPressed: uploadingAvatar ? null : _chooseAvatar,
+                    child: uploadingAvatar
+                        ? const SizedBox.square(
+                            dimension: 13,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('选择'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            AppCard(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Icon(
+                        controller.availableUpdate == null
+                            ? Icons.check_circle
+                            : Icons.system_update_alt,
+                        size: 18,
+                        color: controller.availableUpdate == null
+                            ? AppColors.success
+                            : AppColors.warning,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          controller.availableUpdate == null
+                              ? '已是最新版本'
+                              : '发现新版本 ${controller.availableUpdate!.latestVersion}',
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
-                        icon: const Icon(Icons.download, size: 17),
-                        label: const Text('下载更新'),
                       ),
                     ],
-                  ],
-                ),
-              ),
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: clearing ? null : () => _confirmClear(context),
-                  icon: clearing
-                      ? const SizedBox.square(
-                          dimension: 13,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.delete_outline, size: 17),
-                  label: Text(clearing ? '清除中…' : '清除本地数据'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.danger,
-                    backgroundColor: AppColors.danger.withValues(alpha: 0.035),
-                    side: BorderSide.none,
                   ),
-                ),
+                  const SizedBox(height: 5),
+                  Text(
+                    '当前版本 v${snapshot.data?.version ?? '—'}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  if (controller.availableUpdate != null &&
+                      controller.availableUpdate!.releaseNotes
+                          .isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Text(controller.availableUpdate!.releaseNotes),
+                  ],
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => controller.checkForUpdate(),
+                    icon: const Icon(Icons.refresh, size: 17),
+                    label: const Text('检查更新'),
+                  ),
+                  if (controller.availableUpdate != null) ...<Widget>[
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: () => launchUrl(
+                        Uri.parse(controller.availableUpdate!.downloadUrl),
+                      ),
+                      icon: const Icon(Icons.download, size: 17),
+                      label: const Text('下载更新'),
+                    ),
+                  ],
+                ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 16),
+            AppCard(
+              color: AppColors.dangerSoft,
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  const Text(
+                    '危险操作',
+                    style: TextStyle(
+                      color: AppColors.danger,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    '清除后无法恢复，群组、聊天缓存和自定义素材都会消失。',
+                    style: TextStyle(
+                      color: AppColors.secondaryText,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: clearing ? null : () => _confirmClear(context),
+                    icon: clearing
+                        ? const SizedBox.square(
+                            dimension: 13,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.delete_outline_rounded, size: 17),
+                    label: Text(clearing ? '清除中…' : '清除本地数据'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.danger,
+                      side: const BorderSide(color: AppColors.danger),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       );
 
@@ -1849,28 +2018,14 @@ class _AboutPaneState extends State<_AboutPane> {
   }
 
   Future<void> _confirmClear(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('清除本地数据？'),
-        content: const Text(
-          '会清除昵称、群组、提醒进度、计数、聊天缓存和自定义素材，'
-          '然后重新进入初始设置。',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            child: const Text('清除'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: '清除本地数据？',
+      message: '昵称、群组、提醒进度、计数、聊天缓存和自定义素材都会被清除，且无法撤销。',
+      confirmLabel: '清除数据',
+      destructive: true,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       setState(() => clearing = true);
       await controller.clearLocalData();
       if (mounted) setState(() => clearing = false);

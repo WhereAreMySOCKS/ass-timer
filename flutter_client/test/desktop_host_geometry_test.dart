@@ -1,5 +1,5 @@
-import 'package:ass_timer_flutter/core/window/desktop_host.dart';
 import 'package:ass_timer_flutter/core/window/bubble_layout.dart';
+import 'package:ass_timer_flutter/core/window/desktop_host.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:ass_timer_flutter/features/pet/pet_window_view.dart';
 import 'package:flutter/material.dart';
@@ -76,7 +76,7 @@ void main() {
     expect(position.dy, 398);
   });
 
-  test('free-roaming bubble is centred above its pet', () {
+  test('free-roaming bubble tail is centred above the visible sprite', () {
     final position = calculateBubbleWindowPosition(
       petPosition: const Offset(500, 500),
       petSize: petWindowSize,
@@ -85,16 +85,31 @@ void main() {
       visibleSize: const Size(1440, 900),
     );
 
-    expect(position, const Offset(456, 316));
+    expect(position, const Offset(426, 316));
+    expect(
+      position.dx + bubbleWindowSize.width / 2,
+      500 + petSpriteLeadingInset + petSpriteWidth / 2,
+    );
   });
 
   test('docked action circles and shadows stay inside the native window', () {
     for (final side in PetDockSide.values) {
-      final centers = petActionCenters(side);
-      for (final center in centers) {
-        expect(center.dx - 26, greaterThanOrEqualTo(0));
-        expect(center.dx + 26, lessThanOrEqualTo(dockedPetWindowSize.width));
+      for (final expanded in <bool>[false, true]) {
+        final centers = petActionCenters(side, expanded: expanded);
+        for (final center in centers) {
+          expect(center.dx - 26, greaterThanOrEqualTo(0));
+          expect(center.dx + 26, lessThanOrEqualTo(dockedPetWindowSize.width));
+        }
       }
+    }
+  });
+
+  test('quick pet actions keep comfortable spacing between hit targets', () {
+    final centers = petActionCenters(null, expanded: false);
+
+    expect(centers, hasLength(3));
+    for (var index = 1; index < centers.length; index++) {
+      expect((centers[index] - centers[index - 1]).distance, greaterThan(52));
     }
   });
 }

@@ -6,6 +6,7 @@ import 'package:ass_timer_flutter/core/theme/app_theme.dart';
 import 'package:ass_timer_flutter/core/window/desktop_host.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -37,11 +38,14 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
   ];
 
   bool _hovering = false;
+  bool _menuPinned = false;
+  bool _bubbleOwnedLastFrame = false;
   bool _didPrecacheSprites = false;
   bool _flightInProgress = false;
   Timer? _hideTimer;
   Timer? _walkTimer;
   bool _moving = false;
+  final FocusNode _menuFocus = FocusNode(debugLabel: 'pet-actions');
   late final AnimationController _ambientController;
   late final AnimationController _clickController;
   late final Animation<double> _clickScale;
@@ -102,6 +106,7 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
   void dispose() {
     _hideTimer?.cancel();
     _walkTimer?.cancel();
+    _menuFocus.dispose();
     _ambientController.dispose();
     _clickController.dispose();
     super.dispose();
@@ -112,104 +117,137 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
     final controller = ref.watch(appControllerProvider);
     final snapshot = controller.snapshot;
     final petVisualLeft = petVisualLeftForDockSide(snapshot.dockSide);
+    final bubbleOwnsInteraction = bubbleOwnsPetInteraction(snapshot.bubbles);
+    final showPetActions = !bubbleOwnsInteraction && (_hovering || _menuPinned);
+    if (bubbleOwnsInteraction && !_bubbleOwnedLastFrame && _menuPinned) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _dismissActions();
+      });
+    }
+    _bubbleOwnedLastFrame = bubbleOwnsInteraction;
     DesktopHost.instance.onPetMoveSettled = controller.settlePetWindow;
     _syncWalking(controller);
     return Material(
       type: MaterialType.transparency,
-      child: MouseRegion(
-        onEnter: (_) {
-          _hideTimer?.cancel();
-          setState(() => _hovering = true);
+      child: CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.escape): _closePinnedMenu,
         },
-        onExit: (_) {
-          _hideTimer?.cancel();
-          _hideTimer = Timer(const Duration(milliseconds: 300), () {
-            if (mounted) setState(() => _hovering = false);
-          });
-        },
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: <Widget>[
-            Positioned(
-              left: petVisualLeft,
-              top: 0,
-              width: petVisualAreaWidth,
-              height: petWindowSize.height,
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onPanStart: (_) => DesktopHost.instance.startPetDrag(),
-                onTap: () => _handleTap(controller),
-                onDoubleTap: () => unawaited(_handleDoubleTap(controller)),
-                onSecondaryTapDown: (details) =>
-                    _showContextMenu(details.globalPosition, controller),
-                child: Center(child: _animatedPet(snapshot)),
-              ),
-            ),
-            Positioned.fill(
-              child: AnimatedOpacity(
-                opacity: _hovering ? 1 : 0,
-                duration: MediaQuery.disableAnimationsOf(context)
-                    ? Duration.zero
-                    : const Duration(milliseconds: 160),
-                child: IgnorePointer(
-                  ignoring: !_hovering,
-                  child: _PetActions(controller: controller),
-                ),
-              ),
-            ),
-            if (controller.availableUpdate != null)
-              Positioned(
-                left: petVisualLeft + 132,
-                top: 18,
-                child: Tooltip(
-                  message: '发现新版本 ${controller.availableUpdate!.latestVersion}',
-                  child: InkWell(
-                    onTap: () => launchUrl(
-                      Uri.parse(controller.availableUpdate!.downloadUrl),
+        child: Focus(
+          focusNode: _menuFocus,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: _menuPinned ? _closePinnedMenu : null,
+            child: MouseRegion(
+              onEnter: (_) {
+                _hideTimer?.cancel();
+                setState(() => _hovering = true);
+              },
+              onExit: (_) {
+                _hideTimer?.cancel();
+                _hideTimer = Timer(const Duration(milliseconds: 300), () {
+                  if (mounted && !_menuPinned) {
+                    setState(() => _hovering = false);
+                  }
+                });
+              },
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: <Widget>[
+                  Positioned(
+                    left: petVisualLeft,
+                    top: 0,
+                    width: petVisualAreaWidth,
+                    height: petWindowSize.height,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onPanStart: (_) => DesktopHost.instance.startPetDrag(),
+                      onTap: () {
+                        if (_menuPinned) _closePinnedMenu();
+                        _handleTap(controller);
+                      },
+                      onDoubleTap: () =>
+                          unawaited(_handleDoubleTap(controller)),
+                      onSecondaryTapDown: bubbleOwnsInteraction
+                          ? null
+                          : (_) => _togglePinnedMenu(),
+                      child: Center(child: _animatedPet(snapshot)),
                     ),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      width: 18,
-                      height: 18,
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        color: Colors.orange,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Text(
-                        '!',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                  ),
+                  Positioned.fill(
+                    child: AnimatedOpacity(
+                      opacity: showPetActions ? 1 : 0,
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 160),
+                      child: IgnorePointer(
+                        ignoring: !showPetActions,
+                        child: _PetActions(
+                          controller: controller,
+                          expanded: _menuPinned,
+                          onActionInvoked: _dismissActions,
                         ),
                       ),
                     ),
                   ),
-                ),
-              ),
-            if (snapshot.lastError != null)
-              Positioned(
-                left: petVisualLeft + 10,
-                right: snapshot.dockSide == PetDockSide.right ? 10 : 66,
-                bottom: 4,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.76),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                    child: Text(
-                      snapshot.lastError!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                  if (controller.availableUpdate != null)
+                    Positioned(
+                      left: petVisualLeft + 132,
+                      top: 18,
+                      child: Tooltip(
+                        message:
+                            '发现新版本 ${controller.availableUpdate!.latestVersion}',
+                        child: InkWell(
+                          onTap: () => launchUrl(
+                            Uri.parse(controller.availableUpdate!.downloadUrl),
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            width: 18,
+                            height: 18,
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(
+                              color: AppColors.coral,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Text(
+                              '!',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
+                  if (snapshot.lastError != null)
+                    Positioned(
+                      left: petVisualLeft + 10,
+                      right: snapshot.dockSide == PetDockSide.right ? 10 : 66,
+                      bottom: 4,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.76),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 5),
+                          child: Text(
+                            snapshot.lastError!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 10),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
-          ],
+            ),
+          ),
         ),
       ),
     );
@@ -288,40 +326,26 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
     }
   }
 
-  Future<void> _showContextMenu(
-    Offset position,
-    AppController controller,
-  ) async {
-    final overlay =
-        Overlay.of(context).context.findRenderObject()! as RenderBox;
-    final selected = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromRect(
-        Rect.fromLTWH(position.dx, position.dy, 1, 1),
-        Offset.zero & overlay.size,
-      ),
-      items: <PopupMenuEntry<String>>[
-        const PopupMenuItem(value: 'chat', child: Text('群聊')),
-        const PopupMenuItem(value: 'rank', child: Text('排行榜')),
-        const PopupMenuDivider(),
-        const PopupMenuItem(value: 'timer', child: Text('修改间隔…')),
-        const PopupMenuItem(value: 'settings', child: Text('设置…')),
-        const PopupMenuDivider(),
-        const PopupMenuItem(value: 'quit', child: Text('退出')),
-      ],
-    );
-    switch (selected) {
-      case 'chat':
-        await controller.openControlCenter(ControlRoute.chat);
-      case 'rank':
-        await controller.openControlCenter(ControlRoute.leaderboard);
-      case 'timer':
-        await controller.openControlCenter(ControlRoute.timer);
-      case 'settings':
-        await controller.openControlCenter(ControlRoute.timer);
-      case 'quit':
-        await DesktopHost.instance.quit();
-    }
+  void _togglePinnedMenu() {
+    _hideTimer?.cancel();
+    setState(() {
+      _menuPinned = !_menuPinned;
+      _hovering = _menuPinned || _hovering;
+    });
+    if (_menuPinned) _menuFocus.requestFocus();
+  }
+
+  void _closePinnedMenu() {
+    if (!_menuPinned) return;
+    _dismissActions();
+  }
+
+  void _dismissActions() {
+    if (!_menuPinned && !_hovering) return;
+    setState(() {
+      _menuPinned = false;
+      _hovering = false;
+    });
   }
 }
 
@@ -427,14 +451,30 @@ String? resolveDefaultPetSprite({
 }
 
 @visibleForTesting
-List<Offset> petActionCenters(PetDockSide? dockSide) {
-  const rightArc = <Offset>[
-    Offset(138, 43),
-    Offset(153, 70),
+bool bubbleOwnsPetInteraction(Iterable<BubbleItem> bubbles) => bubbles.any(
+      (bubble) =>
+          bubble.kind == BubbleKind.reminder ||
+          bubble.kind == BubbleKind.feedback,
+    );
+
+@visibleForTesting
+List<Offset> petActionCenters(
+  PetDockSide? dockSide, {
+  bool expanded = true,
+}) {
+  const quickRightArc = <Offset>[
+    Offset(145, 48),
     Offset(158, 100),
-    Offset(153, 130),
-    Offset(138, 157),
+    Offset(145, 152),
   ];
+  const expandedRightArc = <Offset>[
+    Offset(107, 24),
+    Offset(147, 53),
+    Offset(158, 100),
+    Offset(147, 147),
+    Offset(107, 176),
+  ];
+  final rightArc = expanded ? expandedRightArc : quickRightArc;
   if (dockSide != PetDockSide.right) return rightArc;
   final visualLeft = petVisualLeftForDockSide(dockSide);
   return rightArc
@@ -448,45 +488,75 @@ List<Offset> petActionCenters(PetDockSide? dockSide) {
 }
 
 class _PetActions extends StatelessWidget {
-  const _PetActions({required this.controller});
+  const _PetActions({
+    required this.controller,
+    required this.expanded,
+    required this.onActionInvoked,
+  });
 
   final AppController controller;
+  final bool expanded;
+  final VoidCallback onActionInvoked;
 
   @override
   Widget build(BuildContext context) {
-    final positions = petActionCenters(controller.snapshot.dockSide);
+    final positions = petActionCenters(
+      controller.snapshot.dockSide,
+      expanded: expanded,
+    );
     final unread = controller.snapshot.unreadCounts.values
         .fold<int>(0, (total, count) => total + count);
     final obedient = controller.snapshot.config.appMode == AppMode.obedient;
-    final buttons = <_ActionButton>[
+    final quickButtons = <_ActionButton>[
       _ActionButton(
         tooltip: '设置',
-        icon: Icons.settings_outlined,
-        onPressed: () => controller.openControlCenter(ControlRoute.timer),
+        icon: Icons.settings_rounded,
+        onPressed: () {
+          onActionInvoked();
+          controller.openControlCenter(ControlRoute.timer);
+        },
       ),
       _ActionButton(
         tooltip: unread > 0 ? '发言，$unread 条未读消息' : '发言',
-        icon: Icons.chat_bubble_outline,
+        icon: Icons.chat_bubble_rounded,
         badgeCount: unread,
-        onPressed: () => controller.openControlCenter(ControlRoute.chat),
-      ),
-      _ActionButton(
-        tooltip: '奖杯',
-        icon: Icons.emoji_events_outlined,
-        onPressed: () => controller.openControlCenter(ControlRoute.leaderboard),
+        onPressed: () {
+          onActionInvoked();
+          controller.openControlCenter(ControlRoute.chat);
+        },
       ),
       _ActionButton(
         tooltip: obedient ? '切换到普通模式' : '开启听话模式',
-        icon: obedient ? Icons.eco : Icons.eco_outlined,
+        icon: Icons.eco_rounded,
         selected: obedient,
-        onPressed: controller.toggleObedientMode,
-      ),
-      _ActionButton(
-        tooltip: '退出',
-        icon: Icons.power_settings_new,
-        onPressed: DesktopHost.instance.quit,
+        onPressed: () {
+          onActionInvoked();
+          controller.toggleObedientMode();
+        },
       ),
     ];
+    final buttons = expanded
+        ? <_ActionButton>[
+            ...quickButtons,
+            _ActionButton(
+              tooltip: '排行榜',
+              icon: Icons.emoji_events_rounded,
+              onPressed: () {
+                onActionInvoked();
+                controller.openControlCenter(ControlRoute.leaderboard);
+              },
+            ),
+            _ActionButton(
+              tooltip: '退出',
+              icon: Icons.power_settings_new_rounded,
+              danger: true,
+              onPressed: () {
+                onActionInvoked();
+                DesktopHost.instance.quit();
+              },
+            ),
+          ]
+        : quickButtons;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -510,13 +580,15 @@ class _ActionButton extends StatefulWidget {
       required this.icon,
       required this.onPressed,
       this.badgeCount = 0,
-      this.selected = false});
+      this.selected = false,
+      this.danger = false});
 
   final String tooltip;
   final IconData icon;
   final VoidCallback onPressed;
   final int badgeCount;
   final bool selected;
+  final bool danger;
 
   @override
   State<_ActionButton> createState() => _ActionButtonState();
@@ -524,6 +596,7 @@ class _ActionButton extends StatefulWidget {
 
 class _ActionButtonState extends State<_ActionButton> {
   bool hovering = false;
+  bool pressed = false;
 
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -534,73 +607,94 @@ class _ActionButtonState extends State<_ActionButton> {
           child: Semantics(
             button: true,
             label: widget.tooltip,
-            child: IconButton(
-              onPressed: widget.onPressed,
-              padding: EdgeInsets.zero,
-              icon: Stack(
-                clipBehavior: Clip.none,
-                children: <Widget>[
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 140),
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: widget.selected
-                          ? Colors.orange
-                              .withValues(alpha: hovering ? 0.24 : 0.16)
-                          : Colors.black
-                              .withValues(alpha: hovering ? 0.11 : 0.001),
-                      boxShadow: widget.selected || hovering
-                          ? const <BoxShadow>[
-                              BoxShadow(
-                                color: Color(0x26000000),
-                                blurRadius: 5,
-                                offset: Offset(0, 2),
-                              ),
-                            ]
-                          : const <BoxShadow>[],
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      widget.icon,
-                      size: 18,
-                      color: widget.selected ? Colors.orange : AppColors.text,
-                    ),
-                  ),
-                  if (widget.badgeCount > 0)
-                    Positioned(
-                      right: -6,
-                      top: -6,
-                      child: Container(
-                        constraints:
-                            const BoxConstraints(minWidth: 14, minHeight: 14),
-                        padding: const EdgeInsets.symmetric(horizontal: 3),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
+            child: AnimatedScale(
+              scale: pressed ? 0.94 : 1,
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : context.visualTokens.hoverDuration,
+              child: Listener(
+                onPointerDown: (_) => setState(() => pressed = true),
+                onPointerUp: (_) => setState(() => pressed = false),
+                onPointerCancel: (_) => setState(() => pressed = false),
+                child: IconButton(
+                  onPressed: widget.onPressed,
+                  padding: EdgeInsets.zero,
+                  icon: Stack(
+                    clipBehavior: Clip.none,
+                    children: <Widget>[
+                      AnimatedContainer(
+                        duration: context.visualTokens.hoverDuration,
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
                           shape: BoxShape.circle,
+                          color: pressed
+                              ? Colors.white.withValues(alpha: 0.22)
+                              : hovering || widget.selected
+                                  ? Colors.white.withValues(alpha: 0.12)
+                                  : Colors.transparent,
+                          border: Border.all(
+                            color: widget.danger
+                                ? AppColors.coral.withValues(alpha: 0.82)
+                                : hovering || widget.selected
+                                    ? Colors.white.withValues(alpha: 0.92)
+                                    : Colors.white.withValues(alpha: 0.58),
+                            width: hovering || widget.selected ? 1.5 : 1,
+                          ),
+                          boxShadow: <BoxShadow>[
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.28),
+                              blurRadius: hovering || pressed ? 12 : 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                         alignment: Alignment.center,
-                        child: Text(
-                          widget.badgeCount > 99
-                              ? '99+'
-                              : '${widget.badgeCount}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 8,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        child: Icon(
+                          widget.icon,
+                          size: 18,
+                          color: widget.danger
+                              ? AppColors.coral
+                              : Colors.white.withValues(
+                                  alpha: widget.selected || hovering ? 1 : 0.82,
+                                ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-              style: IconButton.styleFrom(
-                minimumSize: const Size.square(44),
-                maximumSize: const Size.square(44),
-                foregroundColor: AppColors.text,
-                overlayColor: Colors.transparent,
-                shape: const CircleBorder(),
+                      if (widget.badgeCount > 0)
+                        Positioned(
+                          right: -6,
+                          top: -6,
+                          child: Container(
+                            constraints: const BoxConstraints(
+                                minWidth: 14, minHeight: 14),
+                            padding: const EdgeInsets.symmetric(horizontal: 3),
+                            decoration: const BoxDecoration(
+                              color: AppColors.coral,
+                              shape: BoxShape.circle,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              widget.badgeCount > 99
+                                  ? '99+'
+                                  : '${widget.badgeCount}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size.square(44),
+                    maximumSize: const Size.square(44),
+                    foregroundColor: AppColors.text,
+                    overlayColor: Colors.transparent,
+                    shape: const CircleBorder(),
+                  ),
+                ),
               ),
             ),
           ),

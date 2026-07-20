@@ -20,6 +20,7 @@ class BubbleQueue {
     String? senderAvatarUrl,
     String? groupId,
     String? message,
+    BubbleFeedbackTone? feedbackTone,
   }) {
     if (kind == BubbleKind.reminder) {
       final existing = _items.where((item) => item.kind == kind).firstOrNull;
@@ -35,6 +36,7 @@ class BubbleQueue {
       senderAvatarUrl: senderAvatarUrl,
       groupId: groupId,
       message: message,
+      feedbackTone: feedbackTone,
     );
     _items.add(item);
     _items.sort((a, b) {
@@ -45,7 +47,9 @@ class BubbleQueue {
 
     if (kind != BubbleKind.reminder) {
       _dismissTimers[item.id] = Timer(
-        const Duration(seconds: 5),
+        kind == BubbleKind.feedback
+            ? const Duration(milliseconds: 1400)
+            : const Duration(seconds: 5),
         () => remove(item.id),
       );
     }

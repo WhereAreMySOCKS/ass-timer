@@ -24,4 +24,21 @@ void main() {
       '得意',
     );
   });
+
+  test('reminder and feedback bubbles own the pet interaction layer', () {
+    BubbleItem bubble(BubbleKind kind) => BubbleItem(
+          id: kind.name,
+          kind: kind,
+          createdAt: DateTime(2026),
+        );
+
+    expect(bubbleOwnsPetInteraction(<BubbleItem>[bubble(BubbleKind.reminder)]),
+        isTrue);
+    expect(bubbleOwnsPetInteraction(<BubbleItem>[bubble(BubbleKind.feedback)]),
+        isTrue);
+    expect(
+      bubbleOwnsPetInteraction(<BubbleItem>[bubble(BubbleKind.chatMessage)]),
+      isFalse,
+    );
+  });
 }

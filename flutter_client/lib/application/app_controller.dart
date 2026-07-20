@@ -263,6 +263,11 @@ class AppController extends ChangeNotifier {
 
   Future<void> completeReminder() async {
     if (snapshot.timerPhase != TimerPhase.reminder) return;
+    _bubbles.add(
+      BubbleKind.feedback,
+      message: '行，记你一次。',
+      feedbackTone: BubbleFeedbackTone.success,
+    );
     _bubbles.removeKind(BubbleKind.reminder);
     _timer.complete(intervalSeconds: snapshot.config.intervalSeconds);
 
@@ -286,6 +291,11 @@ class AppController extends ChangeNotifier {
   }
 
   void skipReminder() {
+    _bubbles.add(
+      BubbleKind.feedback,
+      message: '行，晚点再叫你。',
+      feedbackTone: BubbleFeedbackTone.warning,
+    );
     _bubbles.removeKind(BubbleKind.reminder);
     _timer.skip(intervalSeconds: snapshot.config.intervalSeconds);
   }

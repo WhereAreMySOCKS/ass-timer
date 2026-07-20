@@ -18,8 +18,8 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     expect(find.text('该提肛了！'), findsOneWidget);
-    expect(find.text('收到'), findsOneWidget);
-    expect(find.text('等会'), findsOneWidget);
+    expect(find.text('完成了'), findsOneWidget);
+    expect(find.text('晚点再说'), findsOneWidget);
     _expectActionButtonsSameSize(tester);
   });
 
@@ -36,10 +36,10 @@ void main() {
       obedientBubbleContentSize,
     );
     expect(tester.takeException(), isNull);
-    expect(find.text('该放松了'), findsOneWidget);
-    expect(find.text('缓一口气'), findsOneWidget);
-    expect(find.text('收到'), findsOneWidget);
-    expect(find.text('等会'), findsOneWidget);
+    expect(find.text('该放松了！'), findsOneWidget);
+    expect(find.text('缓一口气，别绷太紧。'), findsOneWidget);
+    expect(find.text('完成了'), findsOneWidget);
+    expect(find.text('晚点再说'), findsOneWidget);
     _expectActionButtonsSameSize(tester);
   });
 
@@ -51,7 +51,7 @@ void main() {
       windowSize: obedientBubbleContentSize,
     );
 
-    final titleBottom = tester.getBottomLeft(find.text('该放松了')).dy;
+    final titleBottom = tester.getBottomLeft(find.text('该放松了！')).dy;
     final actionTop = tester
         .getTopLeft(find.byKey(const ValueKey<String>('reminder-actions')))
         .dy;
@@ -64,6 +64,20 @@ void main() {
       obedientBubbleContentSize.height - actionBottom,
       lessThanOrEqualTo(18),
     );
+  });
+
+  testWidgets('reminder stays inside the window at 1.5 text scaling',
+      (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pumpBubble(
+      tester,
+      obedient: false,
+      windowSize: normalBubbleContentSize,
+    );
+
+    expect(tester.takeException(), isNull);
+    _expectActionButtonsSameSize(tester);
   });
 }
 
