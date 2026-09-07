@@ -30,7 +30,6 @@ class ReminderBubble extends StatelessWidget {
   Widget build(BuildContext context) => ReminderBubbleContent(
         obedient: controller.snapshot.config.appMode == AppMode.obedient,
         reminderTitle: controller.reminderTitle,
-        exerciseName: controller.exerciseName,
         tail: tail,
         onComplete: controller.completeReminder,
         onSkip: controller.skipReminder,
@@ -42,7 +41,6 @@ class ReminderBubbleContent extends StatelessWidget {
   const ReminderBubbleContent({
     required this.obedient,
     required this.reminderTitle,
-    required this.exerciseName,
     required this.onComplete,
     required this.onSkip,
     this.tail = SpeechBubbleTail.bottom,
@@ -51,7 +49,6 @@ class ReminderBubbleContent extends StatelessWidget {
 
   final bool obedient;
   final String reminderTitle;
-  final String exerciseName;
   final SpeechBubbleTail tail;
   final VoidCallback onComplete;
   final VoidCallback onSkip;
@@ -64,7 +61,6 @@ class ReminderBubbleContent extends StatelessWidget {
     final cardWidth = size.width - (horizontalTail ? bubbleTailExtent : 0);
     final cardHeight =
         size.height - (tail == SpeechBubbleTail.bottom ? bubbleTailExtent : 0);
-    final highTextScale = MediaQuery.textScalerOf(context).scale(1) >= 1.4;
     return SizedBox(
       width: size.width,
       height: size.height,
@@ -72,7 +68,7 @@ class ReminderBubbleContent extends StatelessWidget {
         tail: tail,
         width: cardWidth,
         height: cardHeight,
-        semanticLabel: '$reminderTitle，是时候做$exerciseName运动了',
+        semanticLabel: reminderTitle,
         padding: obedient
             ? const EdgeInsets.fromLTRB(11, 14, 11, 5)
             : const EdgeInsets.fromLTRB(13, 11, 13, 10),
@@ -83,10 +79,8 @@ class ReminderBubbleContent extends StatelessWidget {
             _ReminderHeader(
               obedient: obedient,
               title: reminderTitle,
-              subtitle: obedient ? '缓一口气，别绷太紧。' : '该做$exerciseName运动了。',
-              hideSubtitle: highTextScale,
             ),
-            SizedBox(height: obedient ? 5 : 8),
+            SizedBox(height: obedient ? 6 : 8),
             _ReminderActions(
               compact: obedient,
               onComplete: onComplete,
@@ -103,14 +97,10 @@ class _ReminderHeader extends StatelessWidget {
   const _ReminderHeader({
     required this.obedient,
     required this.title,
-    required this.subtitle,
-    required this.hideSubtitle,
   });
 
   final bool obedient;
   final String title;
-  final String subtitle;
-  final bool hideSubtitle;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -145,20 +135,6 @@ class _ReminderHeader extends StatelessWidget {
                     height: 1.05,
                   ),
                 ),
-                if (!hideSubtitle) ...<Widget>[
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: AppColors.secondaryText,
-                      fontSize: obedient ? 11.5 : 12,
-                      fontWeight: FontWeight.w500,
-                      height: 1.05,
-                    ),
-                  ),
-                ],
               ],
             ),
           ),

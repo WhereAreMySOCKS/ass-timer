@@ -65,7 +65,7 @@ class _BubbleCard extends StatelessWidget {
     if (bubble.kind == BubbleKind.feedback) {
       return _FeedbackBubbleContent(
         tail: tail,
-        message: bubble.message ?? '行，记住了。',
+        message: bubble.message ?? '已记录',
         tone: bubble.feedbackTone ?? BubbleFeedbackTone.success,
       );
     }
@@ -88,7 +88,7 @@ class _BubbleCard extends StatelessWidget {
             icon: Icons.celebration_rounded,
             iconColor: AppColors.coral,
             title: '${bubble.senderNickname ?? '群友'}完成了一次',
-            message: '${controller.exerciseName} +1，群里有人认真了。',
+            message: '${controller.exerciseName} +1',
             showChevron: false,
           ),
         BubbleKind.chatMessage => _EventBubbleContent(

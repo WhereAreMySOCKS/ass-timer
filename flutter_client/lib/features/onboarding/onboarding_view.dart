@@ -51,6 +51,8 @@ class _OnboardingViewState extends ConsumerState<OnboardingView> {
                     duration: MediaQuery.disableAnimationsOf(context)
                         ? Duration.zero
                         : context.visualTokens.transitionDuration,
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
                     child: switch (_step) {
                       _OnboardingStep.profile => _profile(controller),
                       _OnboardingStep.timing => _timing(),
@@ -72,10 +74,7 @@ class _OnboardingViewState extends ConsumerState<OnboardingView> {
         key: const ValueKey('profile'),
         padding: const EdgeInsets.fromLTRB(28, 24, 28, 18),
         children: <Widget>[
-          const AppPageTitle(
-            '认识一下',
-            subtitle: '先留个称呼和头像，群里的损友才知道该喊谁。',
-          ),
+          const AppPageTitle('个人资料'),
           const SizedBox(height: 22),
           AppCard(
             child: Row(
@@ -104,7 +103,7 @@ class _OnboardingViewState extends ConsumerState<OnboardingView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       const Text(
-                        '怎么称呼你',
+                        '昵称',
                         style: TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 8),
@@ -117,11 +116,6 @@ class _OnboardingViewState extends ConsumerState<OnboardingView> {
                           counterText: '',
                         ),
                         onChanged: (_) => setState(() {}),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _avatarPath == null ? '点左边选张头像。' : '行，认住你了。',
-                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                   ),
@@ -138,10 +132,7 @@ class _OnboardingViewState extends ConsumerState<OnboardingView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const AppPageTitle(
-              '定个节奏',
-              subtitle: '拖一圈选提醒间隔。先舒服地坚持，比一上来较劲靠谱。',
-            ),
+            const AppPageTitle('提醒间隔'),
             const Spacer(),
             Center(
               child: CircularIntervalPicker(
@@ -150,7 +141,7 @@ class _OnboardingViewState extends ConsumerState<OnboardingView> {
               ),
             ),
             const Spacer(),
-            const AppInlineNotice(message: '之后随时能在“提醒”里改。'),
+            const SizedBox(height: 18),
           ],
         ),
       );
@@ -159,10 +150,7 @@ class _OnboardingViewState extends ConsumerState<OnboardingView> {
         key: const ValueKey('group'),
         padding: const EdgeInsets.fromLTRB(28, 24, 28, 18),
         children: <Widget>[
-          const AppPageTitle(
-            '找个搭子',
-            subtitle: '建个群，或者拿 6 位邀请码进去。互相监督，少装死。',
-          ),
+          const AppPageTitle('群组'),
           const SizedBox(height: 18),
           AppCard(
             child: Column(
@@ -303,48 +291,35 @@ class _Sidebar extends StatelessWidget {
           width: 180,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 20, 12, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6),
-                  child: Text(
-                    '该提肛了',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(6, 4, 6, 18),
-                  child: Text('三步就完事',
-                      style: TextStyle(
-                          color: AppColors.secondaryText, fontSize: 12)),
-                ),
-                for (final value in _OnboardingStep.values)
-                  _StepRow(
-                      value: value,
-                      active: value == step,
-                      complete: value.index < step.index),
-                const Spacer(),
-                Center(
-                  child: Image.asset(
-                    'assets/sprites/得意.png',
-                    width: 102,
-                    height: 118,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Center(
-                  child: Text(
-                    '放心，不会很严肃。',
-                    style: TextStyle(
-                      color: AppColors.secondaryText,
-                      fontSize: 11,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6),
+                    child: Text(
+                      '该提肛了',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                     ),
                   ),
-                ),
-              ],
+                  for (final value in _OnboardingStep.values)
+                    _StepRow(
+                        value: value,
+                        active: value == step,
+                        complete: value.index < step.index),
+                  const SizedBox(height: 24),
+                  Center(
+                    child: Image.asset(
+                      'assets/sprites/得意.png',
+                      width: 102,
+                      height: 118,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -362,9 +337,9 @@ class _StepRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final labels = <_OnboardingStep, String>{
-      _OnboardingStep.profile: '认识一下',
-      _OnboardingStep.timing: '定个节奏',
-      _OnboardingStep.group: '找个搭子',
+      _OnboardingStep.profile: '个人资料',
+      _OnboardingStep.timing: '提醒间隔',
+      _OnboardingStep.group: '群组',
     };
     final icons = <_OnboardingStep, IconData>{
       _OnboardingStep.profile: Icons.account_circle_outlined,

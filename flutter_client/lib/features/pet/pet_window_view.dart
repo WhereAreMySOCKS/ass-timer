@@ -6,6 +6,7 @@ import 'package:ass_timer_flutter/core/theme/app_theme.dart';
 import 'package:ass_timer_flutter/core/window/desktop_host.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -43,11 +44,15 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
   bool _didPrecacheSprites = false;
   bool _flightInProgress = false;
   Timer? _hideTimer;
-  Timer? _walkTimer;
   bool _moving = false;
+  bool _walkStarting = false;
+  int _walkGeneration = 0;
+  Duration _lastWalkDispatch = Duration.zero;
+  AppController? _walkController;
   final FocusNode _menuFocus = FocusNode(debugLabel: 'pet-actions');
   late final AnimationController _ambientController;
   late final AnimationController _clickController;
+  late final Ticker _walkTicker;
   late final Animation<double> _clickScale;
   late final Animation<double> _clickLift;
 
@@ -62,6 +67,7 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
       vsync: this,
       duration: const Duration(milliseconds: 270),
     );
+    _walkTicker = createTicker(_onWalkTick);
     _clickScale = TweenSequence<double>(<TweenSequenceItem<double>>[
       TweenSequenceItem(
         tween: Tween<double>(begin: 1, end: 0.88)
@@ -105,7 +111,8 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
   @override
   void dispose() {
     _hideTimer?.cancel();
-    _walkTimer?.cancel();
+    _walkTicker.dispose();
+    DesktopHost.instance.endPetWalk();
     _menuFocus.dispose();
     _ambientController.dispose();
     _clickController.dispose();
@@ -180,6 +187,9 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
                       duration: MediaQuery.disableAnimationsOf(context)
                           ? Duration.zero
                           : const Duration(milliseconds: 160),
+                      curve: showPetActions
+                          ? Curves.easeOutCubic
+                          : Curves.easeInCubic,
                       child: IgnorePointer(
                         ignoring: !showPetActions,
                         child: _PetActions(
@@ -308,22 +318,56 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
 
   void _syncWalking(AppController controller) {
     final walking = controller.isPetMoving;
-    if (walking && _walkTimer == null) {
-      _walkTimer = Timer.periodic(const Duration(milliseconds: 50), (_) async {
-        if (_moving) return;
-        _moving = true;
-        try {
-          final facingLeft = controller.snapshot.petFacingLeft;
-          final next = await DesktopHost.instance.movePetStep(facingLeft);
-          if (next != facingLeft) controller.setPetFacingLeft(next);
-        } finally {
-          _moving = false;
-        }
-      });
-    } else if (!walking && _walkTimer != null) {
-      _walkTimer?.cancel();
-      _walkTimer = null;
+    if (walking && !_walkTicker.isActive && !_walkStarting) {
+      _walkController = controller;
+      _walkStarting = true;
+      final generation = ++_walkGeneration;
+      unawaited(_startWalking(controller, generation));
+    } else if (!walking && (_walkTicker.isActive || _walkStarting)) {
+      _walkGeneration += 1;
+      _walkStarting = false;
+      _walkTicker.stop();
+      _walkController = null;
+      _lastWalkDispatch = Duration.zero;
+      DesktopHost.instance.endPetWalk();
     }
+  }
+
+  Future<void> _startWalking(
+    AppController controller,
+    int generation,
+  ) async {
+    try {
+      await DesktopHost.instance.beginPetWalk();
+    } on Object {
+      if (generation == _walkGeneration) _walkStarting = false;
+      return;
+    }
+    if (!mounted || generation != _walkGeneration || !controller.isPetMoving) {
+      DesktopHost.instance.endPetWalk();
+      return;
+    }
+    _walkStarting = false;
+    _lastWalkDispatch = Duration.zero;
+    _walkTicker.start();
+  }
+
+  void _onWalkTick(Duration elapsed) {
+    final controller = _walkController;
+    if (controller == null || _moving) return;
+    if (elapsed - _lastWalkDispatch < const Duration(milliseconds: 12)) return;
+    _lastWalkDispatch = elapsed;
+    _moving = true;
+    unawaited(() async {
+      try {
+        final facingLeft = controller.snapshot.petFacingLeft;
+        final next =
+            await DesktopHost.instance.movePetStep(facingLeft, elapsed);
+        if (next != facingLeft) controller.setPetFacingLeft(next);
+      } finally {
+        _moving = false;
+      }
+    }());
   }
 
   void _togglePinnedMenu() {
@@ -463,9 +507,10 @@ List<Offset> petActionCenters(
   bool expanded = true,
 }) {
   const quickRightArc = <Offset>[
-    Offset(145, 48),
-    Offset(158, 100),
-    Offset(145, 152),
+    Offset(126, 28),
+    Offset(153, 76),
+    Offset(158, 124),
+    Offset(143, 172),
   ];
   const expandedRightArc = <Offset>[
     Offset(107, 24),
@@ -526,6 +571,14 @@ class _PetActions extends StatelessWidget {
         },
       ),
       _ActionButton(
+        tooltip: '奖杯',
+        icon: Icons.emoji_events_rounded,
+        onPressed: () {
+          onActionInvoked();
+          controller.openControlCenter(ControlRoute.leaderboard);
+        },
+      ),
+      _ActionButton(
         tooltip: obedient ? '切换到普通模式' : '开启听话模式',
         icon: Icons.eco_rounded,
         selected: obedient,
@@ -538,14 +591,6 @@ class _PetActions extends StatelessWidget {
     final buttons = expanded
         ? <_ActionButton>[
             ...quickButtons,
-            _ActionButton(
-              tooltip: '排行榜',
-              icon: Icons.emoji_events_rounded,
-              onPressed: () {
-                onActionInvoked();
-                controller.openControlCenter(ControlRoute.leaderboard);
-              },
-            ),
             _ActionButton(
               tooltip: '退出',
               icon: Icons.power_settings_new_rounded,
@@ -612,6 +657,7 @@ class _ActionButtonState extends State<_ActionButton> {
               duration: MediaQuery.disableAnimationsOf(context)
                   ? Duration.zero
                   : context.visualTokens.hoverDuration,
+              curve: Curves.easeOutCubic,
               child: Listener(
                 onPointerDown: (_) => setState(() => pressed = true),
                 onPointerUp: (_) => setState(() => pressed = false),
@@ -623,27 +669,30 @@ class _ActionButtonState extends State<_ActionButton> {
                     clipBehavior: Clip.none,
                     children: <Widget>[
                       AnimatedContainer(
-                        duration: context.visualTokens.hoverDuration,
+                        duration: MediaQuery.disableAnimationsOf(context)
+                            ? Duration.zero
+                            : context.visualTokens.hoverDuration,
+                        curve: Curves.easeOutCubic,
                         width: 32,
                         height: 32,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: pressed
-                              ? Colors.white.withValues(alpha: 0.22)
-                              : hovering || widget.selected
-                                  ? Colors.white.withValues(alpha: 0.12)
-                                  : Colors.transparent,
+                              ? const Color(0xFFE5E5EA)
+                              : widget.selected
+                                  ? AppColors.accentSoft
+                                  : Colors.white.withValues(alpha: 0.96),
                           border: Border.all(
                             color: widget.danger
                                 ? AppColors.coral.withValues(alpha: 0.82)
                                 : hovering || widget.selected
-                                    ? Colors.white.withValues(alpha: 0.92)
-                                    : Colors.white.withValues(alpha: 0.58),
+                                    ? AppColors.accent
+                                    : const Color(0xFFD2D2D7),
                             width: hovering || widget.selected ? 1.5 : 1,
                           ),
                           boxShadow: <BoxShadow>[
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.28),
+                              color: Colors.black.withValues(alpha: 0.14),
                               blurRadius: hovering || pressed ? 12 : 8,
                               offset: const Offset(0, 2),
                             ),
@@ -655,9 +704,9 @@ class _ActionButtonState extends State<_ActionButton> {
                           size: 18,
                           color: widget.danger
                               ? AppColors.coral
-                              : Colors.white.withValues(
-                                  alpha: widget.selected || hovering ? 1 : 0.82,
-                                ),
+                              : widget.selected || hovering
+                                  ? AppColors.accent
+                                  : AppColors.text,
                         ),
                       ),
                       if (widget.badgeCount > 0)

@@ -107,9 +107,37 @@ void main() {
   test('quick pet actions keep comfortable spacing between hit targets', () {
     final centers = petActionCenters(null, expanded: false);
 
-    expect(centers, hasLength(3));
+    expect(centers, hasLength(4));
     for (var index = 1; index < centers.length; index++) {
-      expect((centers[index] - centers[index - 1]).distance, greaterThan(52));
+      expect((centers[index] - centers[index - 1]).distance, greaterThan(40));
     }
+  });
+
+  test('walk motion keeps subpixel progress between native window updates', () {
+    var x = 100.0;
+    for (var frame = 0; frame < 4; frame++) {
+      x = advancePetWalkPosition(
+        currentX: x,
+        distance: 0.3,
+        minX: 0,
+        maxX: 500,
+        facingLeft: false,
+      ).x;
+    }
+
+    expect(x, closeTo(101.2, 0.0001));
+  });
+
+  test('walk motion reflects excess distance when it reaches an edge', () {
+    final result = advancePetWalkPosition(
+      currentX: 498,
+      distance: 5,
+      minX: 0,
+      maxX: 500,
+      facingLeft: false,
+    );
+
+    expect(result.x, 497);
+    expect(result.facingLeft, isTrue);
   });
 }

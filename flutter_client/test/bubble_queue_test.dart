@@ -27,7 +27,7 @@ void main() {
       ..add(BubbleKind.reminder)
       ..add(
         BubbleKind.feedback,
-        message: '行，记你一次。',
+        message: '已记录',
         feedbackTone: BubbleFeedbackTone.success,
       )
       ..removeKind(BubbleKind.reminder);

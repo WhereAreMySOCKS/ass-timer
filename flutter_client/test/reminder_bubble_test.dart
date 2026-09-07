@@ -37,7 +37,6 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     expect(find.text('该放松了！'), findsOneWidget);
-    expect(find.text('缓一口气，别绷太紧。'), findsOneWidget);
     expect(find.text('完成了'), findsOneWidget);
     expect(find.text('晚点再说'), findsOneWidget);
     _expectActionButtonsSameSize(tester);
@@ -101,7 +100,6 @@ Future<void> _pumpBubble(
           child: ReminderBubbleContent(
             obedient: obedient,
             reminderTitle: obedient ? '该放松了！' : '该提肛了！',
-            exerciseName: obedient ? '放松' : '提肛',
             onComplete: _noop,
             onSkip: _noop,
           ),

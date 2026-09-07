@@ -47,6 +47,7 @@ class _ControlCenterViewState extends ConsumerState<ControlCenterView> {
     if (route == ControlRoute.leaderboard) {
       return _SecondaryWindowScaffold(
         controller: controller,
+        backgroundColor: Colors.white,
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
         child: _LeaderboardPane(controller: controller, standalone: true),
       );
@@ -77,18 +78,44 @@ class _ControlCenterViewState extends ConsumerState<ControlCenterView> {
                     ),
                   ),
                 Expanded(
-                  child: switch (route) {
-                    ControlRoute.timer => _TimerPane(controller: controller),
-                    ControlRoute.groups => Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: _GroupsPane(controller: controller),
+                  child: AnimatedSwitcher(
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : context.visualTokens.transitionDuration,
+                    reverseDuration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : context.visualTokens.hoverDuration,
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0.018, 0),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
                       ),
-                    ControlRoute.media => _MediaPane(controller: controller),
-                    ControlRoute.about => _AboutPane(controller: controller),
-                    ControlRoute.chat ||
-                    ControlRoute.leaderboard =>
-                      const SizedBox.shrink(),
-                  },
+                    ),
+                    child: KeyedSubtree(
+                      key: ValueKey<ControlRoute>(route),
+                      child: switch (route) {
+                        ControlRoute.timer =>
+                          _TimerPane(controller: controller),
+                        ControlRoute.groups => Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: _GroupsPane(controller: controller),
+                          ),
+                        ControlRoute.media =>
+                          _MediaPane(controller: controller),
+                        ControlRoute.about =>
+                          _AboutPane(controller: controller),
+                        ControlRoute.chat ||
+                        ControlRoute.leaderboard =>
+                          const SizedBox.shrink(),
+                      },
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -103,16 +130,18 @@ class _SecondaryWindowScaffold extends StatelessWidget {
   const _SecondaryWindowScaffold({
     required this.controller,
     required this.child,
+    this.backgroundColor = AppColors.canvas,
     this.padding = EdgeInsets.zero,
   });
 
   final AppController controller;
   final Widget child;
+  final Color backgroundColor;
   final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: AppColors.canvas,
+        backgroundColor: backgroundColor,
         body: Column(
           children: <Widget>[
             if (controller.snapshot.lastError != null)
@@ -154,20 +183,7 @@ class _SettingsSidebar extends StatelessWidget {
             const SizedBox(
               height: 54,
               child: DragToMoveArea(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(14, 18, 10, 8),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '该提肛了',
-                      style: TextStyle(
-                        color: AppColors.text,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
+                child: SizedBox.expand(),
               ),
             ),
             Padding(
@@ -193,18 +209,6 @@ class _SettingsSidebar extends StatelessWidget {
                 height: 88,
                 fit: BoxFit.contain,
                 filterQuality: FilterQuality.high,
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(12, 0, 12, 16),
-              child: Text(
-                '认真，但别太紧张。',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.secondaryText,
-                  fontSize: 10.5,
-                  height: 1.35,
-                ),
               ),
             ),
           ],
@@ -238,7 +242,10 @@ class _SettingsNavButton extends StatelessWidget {
             onTap: onPressed,
             borderRadius: BorderRadius.circular(10),
             child: AnimatedContainer(
-              duration: context.visualTokens.transitionDuration,
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : context.visualTokens.transitionDuration,
+              curve: Curves.easeOutCubic,
               height: 40,
               padding: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
@@ -273,13 +280,12 @@ class _SettingsNavButton extends StatelessWidget {
 }
 
 class _PaneTitle extends StatelessWidget {
-  const _PaneTitle(this.title, {this.subtitle});
+  const _PaneTitle(this.title);
 
   final String title;
-  final String? subtitle;
 
   @override
-  Widget build(BuildContext context) => AppPageTitle(title, subtitle: subtitle);
+  Widget build(BuildContext context) => AppPageTitle(title);
 }
 
 class _TimerPane extends StatefulWidget {
@@ -318,10 +324,7 @@ class _TimerPaneState extends State<_TimerPane> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const AppPageTitle(
-              '提醒节奏',
-              subtitle: '拖到合适的位置，松手就保存。别调太狠。',
-            ),
+            const AppPageTitle('提醒间隔'),
             const Spacer(),
             Center(
               child: CircularIntervalPicker(
@@ -335,16 +338,19 @@ class _TimerPaneState extends State<_TimerPane> {
             ),
             const SizedBox(height: 18),
             AnimatedSwitcher(
-              duration: context.visualTokens.transitionDuration,
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : context.visualTokens.transitionDuration,
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
               child: saved
                   ? const AppInlineNotice(
                       key: ValueKey<String>('interval-saved'),
-                      message: '行，新的节奏记住了。',
+                      message: '已保存',
                       tone: AppFeedbackTone.success,
                     )
-                  : const AppInlineNotice(
+                  : const SizedBox.shrink(
                       key: ValueKey<String>('interval-preview'),
-                      message: '方向键也能微调，每次 5 秒。',
                     ),
             ),
             const Spacer(),
@@ -369,12 +375,15 @@ class _GroupsPaneState extends State<_GroupsPane> {
   final joinController = TextEditingController();
   final Set<String> expandedGroups = <String>{};
   _GroupAction? activeAction;
+  String? copiedGroupId;
+  Timer? copiedGroupTimer;
   bool submitting = false;
 
   @override
   void dispose() {
     createController.dispose();
     joinController.dispose();
+    copiedGroupTimer?.cancel();
     super.dispose();
   }
 
@@ -398,6 +407,7 @@ class _GroupsPaneState extends State<_GroupsPane> {
             duration: MediaQuery.disableAnimationsOf(context)
                 ? Duration.zero
                 : context.visualTokens.transitionDuration,
+            curve: Curves.easeOutCubic,
             alignment: Alignment.topCenter,
             child: activeAction == null
                 ? const SizedBox(width: double.infinity)
@@ -438,16 +448,6 @@ class _GroupsPaneState extends State<_GroupsPane> {
                     height: 1.1,
                   ),
                 ),
-                SizedBox(height: 6),
-                Text(
-                  '管理同步完成记录的群组和邀请码。',
-                  style: TextStyle(
-                    color: AppColors.secondaryText,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
-                    height: 1.35,
-                  ),
-                ),
               ],
             ),
           ),
@@ -480,12 +480,6 @@ class _GroupsPaneState extends State<_GroupsPane> {
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                '创建一个群组，或用邀请码加入已有群组。',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.secondaryText, fontSize: 12),
               ),
             ],
           ),
@@ -561,7 +555,10 @@ class _GroupsPaneState extends State<_GroupsPane> {
                       onPressed: () => _toggleGroup(group.groupId),
                       icon: AnimatedRotation(
                         turns: isExpanded ? 0.5 : 0,
-                        duration: const Duration(milliseconds: 160),
+                        duration: MediaQuery.disableAnimationsOf(context)
+                            ? Duration.zero
+                            : const Duration(milliseconds: 160),
+                        curve: Curves.easeOutCubic,
                         child: const Icon(Icons.keyboard_arrow_down_rounded),
                       ),
                     ),
@@ -575,7 +572,11 @@ class _GroupsPaneState extends State<_GroupsPane> {
               crossFadeState: isExpanded
                   ? CrossFadeState.showSecond
                   : CrossFadeState.showFirst,
-              duration: const Duration(milliseconds: 160),
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 160),
+              firstCurve: Curves.easeInCubic,
+              secondCurve: Curves.easeOutCubic,
               sizeCurve: Curves.easeOutCubic,
             ),
           ],
@@ -595,11 +596,16 @@ class _GroupsPaneState extends State<_GroupsPane> {
               icon: Icons.key_rounded,
               label: '邀请码',
               trailing: TextButton.icon(
-                onPressed: () => Clipboard.setData(
-                  ClipboardData(text: group.inviteCode),
+                onPressed: () => _copyInviteCode(group),
+                icon: Icon(
+                  copiedGroupId == group.groupId
+                      ? Icons.check_rounded
+                      : Icons.copy_rounded,
+                  size: 15,
                 ),
-                icon: const Icon(Icons.copy_rounded, size: 15),
-                label: const Text('复制'),
+                label: Text(
+                  copiedGroupId == group.groupId ? '已复制' : '复制',
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -655,10 +661,11 @@ class _GroupsPaneState extends State<_GroupsPane> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          CircleAvatar(
-            radius: 11,
-            backgroundColor: AppColors.surface,
-            child: Text(member.petEmoji, style: const TextStyle(fontSize: 11)),
+          _UserAvatar(
+            controller: widget.controller,
+            avatarUrl: member.avatarUrl,
+            fallback: member.petEmoji,
+            size: 22,
           ),
           const SizedBox(width: 6),
           Text(
@@ -747,13 +754,8 @@ class _GroupsPaneState extends State<_GroupsPane> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            creating ? '拉个群，互相监督' : '拿邀请码进群',
+            creating ? '创建群组' : '加入群组',
             style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            creating ? '名字随便起，别超过 50 个字。' : '邀请码一共 6 位，不分大小写。',
-            style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
           TextField(
@@ -836,6 +838,16 @@ class _GroupsPaneState extends State<_GroupsPane> {
       destructive: true,
     );
     if (confirmed) await widget.controller.leaveGroup(group.groupId);
+  }
+
+  Future<void> _copyInviteCode(GroupInfo group) async {
+    await Clipboard.setData(ClipboardData(text: group.inviteCode));
+    if (!mounted) return;
+    copiedGroupTimer?.cancel();
+    setState(() => copiedGroupId = group.groupId);
+    copiedGroupTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => copiedGroupId = null);
+    });
   }
 }
 
@@ -950,11 +962,14 @@ class _ChatPane extends StatefulWidget {
 class _ChatPaneState extends State<_ChatPane> {
   final input = TextEditingController();
   String? requestedGroupId;
+  bool inviteCopied = false;
+  Timer? inviteCopiedTimer;
   bool sending = false;
 
   @override
   void dispose() {
     input.dispose();
+    inviteCopiedTimer?.cancel();
     super.dispose();
   }
 
@@ -986,10 +1001,9 @@ class _ChatPaneState extends State<_ChatPane> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        if (!widget.standalone)
-          const _PaneTitle('群聊', subtitle: '消息会实时同步，并在本地保留每个群组最近 100 条。'),
+        if (!widget.standalone) const _PaneTitle('群聊'),
         if (joined.isEmpty)
-          const Expanded(child: Center(child: Text('加入群组后即可开始聊天')))
+          const Expanded(child: Center(child: Text('暂无消息')))
         else
           Expanded(
             child: Container(
@@ -1083,13 +1097,18 @@ class _ChatPaneState extends State<_ChatPane> {
                                 const SizedBox(width: 6),
                                 if (selectedGroup != null)
                                   OutlinedButton.icon(
-                                    onPressed: () => Clipboard.setData(
-                                      ClipboardData(
-                                        text: selectedGroup.inviteCode,
-                                      ),
+                                    onPressed: () => _copyInviteCode(
+                                      selectedGroup.inviteCode,
                                     ),
-                                    icon: const Icon(Icons.numbers, size: 15),
-                                    label: const Text('邀请码'),
+                                    icon: Icon(
+                                      inviteCopied
+                                          ? Icons.check_rounded
+                                          : Icons.numbers,
+                                      size: 15,
+                                    ),
+                                    label: Text(
+                                      inviteCopied ? '已复制' : '邀请码',
+                                    ),
                                   ),
                               ],
                             ),
@@ -1098,8 +1117,33 @@ class _ChatPaneState extends State<_ChatPane> {
                           Expanded(
                             child: messages.isEmpty
                                 ? const Center(
-                                    child: AppInlineNotice(
-                                      message: '还没开聊。说句话，别只盯着看。',
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: <Widget>[
+                                        DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            color: AppColors.muted,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Padding(
+                                            padding: EdgeInsets.all(14),
+                                            child: Icon(
+                                              Icons.chat_bubble_outline_rounded,
+                                              size: 26,
+                                              color: AppColors.secondaryText,
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(height: 12),
+                                        Text(
+                                          '暂无消息',
+                                          style: TextStyle(
+                                            color: AppColors.secondaryText,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   )
                                 : ListView.builder(
@@ -1181,8 +1225,21 @@ class _ChatPaneState extends State<_ChatPane> {
 
   void _loadGroup(String groupId) {
     if (requestedGroupId == groupId) return;
-    setState(() => requestedGroupId = groupId);
+    setState(() {
+      requestedGroupId = groupId;
+      inviteCopied = false;
+    });
     unawaited(widget.controller.loadChat(groupId));
+  }
+
+  Future<void> _copyInviteCode(String inviteCode) async {
+    await Clipboard.setData(ClipboardData(text: inviteCode));
+    if (!mounted) return;
+    inviteCopiedTimer?.cancel();
+    setState(() => inviteCopied = true);
+    inviteCopiedTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => inviteCopied = false);
+    });
   }
 }
 
@@ -1201,7 +1258,7 @@ class _ChatMessageRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final avatar = _UserAvatar(
       controller: controller,
-      avatarUrl: message.avatarUrl,
+      avatarUrl: controller.avatarUrlForChatMessage(message),
       fallback: message.petEmoji,
     );
     final bubble = Flexible(
@@ -1422,196 +1479,433 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
         if (mounted && selected != null) _selectGroup(selected!);
       });
     }
+    final myEntry = widget.controller.leaderboard
+        .where(
+          (entry) => entry.userId == widget.controller.snapshot.config.userId,
+        )
+        .firstOrNull;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        if (widget.standalone)
-          Row(
-            children: <Widget>[
-              const Icon(Icons.emoji_events_rounded, color: AppColors.coral),
-              const SizedBox(width: 7),
-              const Text(
-                '排行榜',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const Spacer(),
-              if (groups.isNotEmpty && selected != null)
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 120),
-                  child: DropdownButton<String>(
-                    value: selected,
-                    isExpanded: true,
-                    underline: const SizedBox.shrink(),
-                    items: groups
-                        .map(
-                          (group) => DropdownMenuItem(
-                            value: group.groupId,
-                            child: Text(
-                              group.groupName,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value != null) _selectGroup(value);
-                    },
-                  ),
-                ),
-              IconButton(
-                tooltip: '刷新排行榜',
-                onPressed: selected == null
-                    ? null
-                    : () => widget.controller.refreshLeaderboard(selected!),
-                icon: const Icon(Icons.refresh, size: 19),
-              ),
-            ],
-          )
-        else
-          const _PaneTitle('排行榜', subtitle: '查看群组成员累计完成次数。'),
-        if (groups.isEmpty)
-          const Expanded(child: Center(child: Text('加入群组后即可查看排行榜')))
-        else if (selected != null && !widget.standalone)
-          Row(
-            children: <Widget>[
-              DropdownButton<String>(
-                value: selected,
-                items: groups
-                    .map(
-                      (group) => DropdownMenuItem(
-                        value: group.groupId,
-                        child: Text(group.groupName),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  if (value != null) _selectGroup(value);
-                },
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                tooltip: '刷新排行榜',
-                onPressed: () =>
-                    widget.controller.refreshLeaderboard(selected!),
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
-          ),
+        _buildHeader(groups),
+        if (groups.isEmpty) Expanded(child: _buildEmptyState()),
         if (groups.isNotEmpty) ...<Widget>[
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
           Expanded(
             child: widget.controller.leaderboardLoading
                 ? const Center(child: CircularProgressIndicator())
                 : widget.controller.leaderboardError != null
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            const Icon(
-                              Icons.wifi_off_outlined,
-                              color: AppColors.secondaryText,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(widget.controller.leaderboardError!),
-                            const SizedBox(height: 8),
-                            OutlinedButton.icon(
-                              onPressed: selected == null
-                                  ? null
-                                  : () => _selectGroup(selected!),
-                              icon: const Icon(Icons.refresh, size: 17),
-                              label: const Text('重试'),
-                            ),
-                          ],
-                        ),
-                      )
+                    ? _buildErrorState()
                     : widget.controller.leaderboard.isEmpty
-                        ? const Center(child: Text('暂无数据'))
+                        ? _buildNoDataState()
                         : ListView.separated(
+                            padding: const EdgeInsets.only(bottom: 2),
                             itemCount: widget.controller.leaderboard.length,
                             separatorBuilder: (_, __) =>
-                                const Divider(height: 1),
+                                const SizedBox(height: 8),
                             itemBuilder: (context, index) {
-                              final entry =
-                                  widget.controller.leaderboard[index];
-                              final own = entry.userId ==
-                                  widget.controller.snapshot.config.userId;
-                              final medal = switch (entry.rank) {
-                                1 => '🥇',
-                                2 => '🥈',
-                                3 => '🥉',
-                                _ => '${entry.rank}',
-                              };
-                              return Container(
-                                decoration: BoxDecoration(
-                                  color: own
-                                      ? AppColors.accentSoft
-                                      : entry.rank <= 3
-                                          ? AppColors.muted
-                                          : Colors.transparent,
-                                  border: entry.rank <= 3 || own
-                                      ? Border.all(color: AppColors.border)
-                                      : null,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: ListTile(
-                                  leading: SizedBox(
-                                    width: 72,
-                                    child: Row(
-                                      children: <Widget>[
-                                        SizedBox(
-                                          width: 32,
-                                          child: Text(
-                                            medal,
-                                            style: TextStyle(
-                                              fontSize:
-                                                  entry.rank <= 3 ? 22 : 16,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ),
-                                        _UserAvatar(
-                                          controller: widget.controller,
-                                          avatarUrl: entry.avatarUrl,
-                                          fallback: entry.petEmoji,
-                                          size: 30,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  title: Text(
-                                    entry.nickname,
-                                    style: TextStyle(
-                                      fontWeight: own
-                                          ? FontWeight.w700
-                                          : FontWeight.w400,
-                                    ),
-                                  ),
-                                  trailing: Text(
-                                    '${entry.count} 次',
-                                    style: const TextStyle(
-                                      color: AppColors.secondaryText,
-                                      fontFeatures: <FontFeature>[
-                                        FontFeature.tabularFigures(),
-                                      ],
-                                    ),
-                                  ),
-                                ),
+                              return _LeaderboardRow(
+                                entry: widget.controller.leaderboard[index],
+                                controller: widget.controller,
                               );
                             },
                           ),
           ),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Text(
-              '我的总${widget.controller.exerciseName}：${widget.controller.snapshot.config.localEventCount} 次',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+          const SizedBox(height: 12),
+          _MyLeaderboardSummary(
+            exerciseName: widget.controller.exerciseName,
+            total: widget.controller.snapshot.config.localEventCount,
+            rank: myEntry?.rank,
           ),
         ],
       ],
     );
   }
+
+  Widget _buildHeader(List<JoinedGroup> groups) => Row(
+        children: <Widget>[
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: const Color(0xFFE3E3E3)),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const SizedBox.square(
+              dimension: 42,
+              child: Icon(Icons.emoji_events_rounded, color: AppColors.accent),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              '排行榜',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+            ),
+          ),
+          if (groups.isNotEmpty && selected != null) ...<Widget>[
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 172),
+              child: _GroupSelector(
+                groups: groups,
+                selected: selected!,
+                onSelected: _selectGroup,
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: '刷新排行榜',
+              onPressed: () => widget.controller.refreshLeaderboard(selected!),
+              style: IconButton.styleFrom(
+                foregroundColor: AppColors.secondaryText,
+                backgroundColor: Colors.white,
+                side: const BorderSide(color: Color(0xFFE3E3E3)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(11),
+                ),
+              ),
+              icon: const Icon(Icons.refresh_rounded, size: 19),
+            ),
+          ],
+        ],
+      );
+
+  Widget _buildEmptyState() => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: const Color(0xFFE3E3E3)),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const SizedBox.square(
+                dimension: 56,
+                child: Icon(
+                  Icons.emoji_events_outlined,
+                  size: 30,
+                  color: AppColors.accent,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              '还没有可查看的排名',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              '加入群组后即可查看成员数据',
+              style: TextStyle(color: AppColors.secondaryText),
+            ),
+          ],
+        ),
+      );
+
+  Widget _buildErrorState() => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Icon(
+              Icons.wifi_off_outlined,
+              color: AppColors.secondaryText,
+              size: 30,
+            ),
+            const SizedBox(height: 10),
+            Text(widget.controller.leaderboardError!),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed:
+                  selected == null ? null : () => _selectGroup(selected!),
+              icon: const Icon(Icons.refresh_rounded, size: 17),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+
+  Widget _buildNoDataState() => const Center(
+        child: Text(
+          '还没有记录',
+          style: TextStyle(color: AppColors.secondaryText),
+        ),
+      );
+}
+
+class _GroupSelector extends StatelessWidget {
+  const _GroupSelector({
+    required this.groups,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<JoinedGroup> groups;
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final group = groups.firstWhere(
+      (item) => item.groupId == selected,
+      orElse: () => groups.first,
+    );
+    return Theme(
+      data: Theme.of(context).copyWith(
+        hoverColor: const Color(0x08000000),
+        highlightColor: const Color(0x0C000000),
+        splashColor: const Color(0x10000000),
+        popupMenuTheme: const PopupMenuThemeData(
+          color: Colors.white,
+          surfaceTintColor: Colors.transparent,
+        ),
+      ),
+      child: PopupMenuButton<String>(
+        tooltip: '切换群组',
+        padding: EdgeInsets.zero,
+        offset: const Offset(0, 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        color: Colors.white,
+        onSelected: onSelected,
+        itemBuilder: (context) => [
+          for (final item in groups)
+            PopupMenuItem<String>(
+              value: item.groupId,
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    item.groupId == selected
+                        ? Icons.check_rounded
+                        : Icons.groups_outlined,
+                    size: 18,
+                    color: item.groupId == selected
+                        ? AppColors.coral
+                        : AppColors.secondaryText,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      item.groupName,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 11),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFE3E3E3)),
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Row(
+            children: <Widget>[
+              const Icon(
+                Icons.groups_rounded,
+                size: 18,
+                color: AppColors.secondaryText,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  group.groupName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 20,
+                color: AppColors.secondaryText,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LeaderboardRow extends StatelessWidget {
+  const _LeaderboardRow({required this.entry, required this.controller});
+
+  final LeaderboardEntry entry;
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final own = entry.userId == controller.snapshot.config.userId;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(
+          color: own ? AppColors.coral : const Color(0xFFE3E3E3),
+        ),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: <Widget>[
+          _RankBadge(rank: entry.rank),
+          const SizedBox(width: 10),
+          _UserAvatar(
+            controller: controller,
+            avatarUrl: entry.avatarUrl,
+            fallback: entry.petEmoji,
+            size: 38,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Row(
+              children: <Widget>[
+                Flexible(
+                  child: Text(
+                    entry.nickname,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (own) ...<Widget>[
+                  const SizedBox(width: 7),
+                  const Text(
+                    '我',
+                    style: TextStyle(
+                      color: AppColors.accent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: <Widget>[
+              Text(
+                '${entry.count}',
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+                ),
+              ),
+              const Text(
+                '次',
+                style: TextStyle(
+                  color: AppColors.secondaryText,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RankBadge extends StatelessWidget {
+  const _RankBadge({required this.rank});
+
+  final int rank;
+
+  @override
+  Widget build(BuildContext context) {
+    final topRank = rank <= 3;
+    final color = switch (rank) {
+      1 => AppColors.coral,
+      2 => AppColors.secondaryText,
+      3 => AppColors.warning,
+      _ => AppColors.secondaryText,
+    };
+    return Container(
+      width: 34,
+      height: 34,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE3E3E3)),
+        shape: BoxShape.circle,
+      ),
+      child: topRank
+          ? Icon(Icons.emoji_events_rounded, size: 19, color: color)
+          : Text(
+              '$rank',
+              style: const TextStyle(
+                color: AppColors.secondaryText,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+    );
+  }
+}
+
+class _MyLeaderboardSummary extends StatelessWidget {
+  const _MyLeaderboardSummary({
+    required this.exerciseName,
+    required this.total,
+    required this.rank,
+  });
+
+  final String exerciseName;
+  final int total;
+  final int? rank;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: const Color(0xFFE3E3E3)),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: <Widget>[
+            const Icon(
+              Icons.insights_rounded,
+              size: 20,
+              color: AppColors.accent,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                '我的总$exerciseName',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            Text(
+              '$total 次',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+              ),
+            ),
+            if (rank != null) ...<Widget>[
+              const SizedBox(width: 12),
+              Container(width: 1, height: 20, color: AppColors.border),
+              const SizedBox(width: 12),
+              Text(
+                '第$rank 名',
+                style: const TextStyle(
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
 }
 
 class _MediaPane extends StatelessWidget {
@@ -1634,7 +1928,7 @@ class _MediaPane extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const _PaneTitle('动作素材', subtitle: '为不同动作设置照片；未设置时显示默认素材。'),
+          const _PaneTitle('动作素材'),
           Expanded(
             child: GridView.builder(
               padding: const EdgeInsets.only(bottom: 14),
@@ -1851,10 +2145,7 @@ class _AboutPaneState extends State<_AboutPane> {
         builder: (context, snapshot) => ListView(
           padding: const EdgeInsets.all(16),
           children: <Widget>[
-            const AppPageTitle(
-              '关于与账户',
-              subtitle: '头像、版本信息和本地数据都在这里。',
-            ),
+            const AppPageTitle('关于'),
             const SizedBox(height: 16),
             AppCard(
               padding: const EdgeInsets.all(12),
@@ -1881,7 +2172,7 @@ class _AboutPaneState extends State<_AboutPane> {
                           ),
                         ),
                         Text(
-                          '账户头像',
+                          '头像',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
@@ -1973,7 +2264,7 @@ class _AboutPaneState extends State<_AboutPane> {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    '清除后无法恢复，群组、聊天缓存和自定义素材都会消失。',
+                    '此操作无法撤销。',
                     style: TextStyle(
                       color: AppColors.secondaryText,
                       fontSize: 12,

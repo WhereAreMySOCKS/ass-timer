@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:ass_timer_flutter/core/diagnostics/crash_reporter.dart';
 import 'package:ass_timer_flutter/core/window/desktop_host.dart';
+import 'package:ass_timer_flutter/core/window/serialized_async_throttle.dart';
 import 'package:ass_timer_flutter/core/window/window_protocol.dart';
 import 'package:ass_timer_flutter/data/api_client.dart';
 import 'package:ass_timer_flutter/data/api_models.dart';
@@ -81,6 +82,8 @@ class AppController extends ChangeNotifier {
   late final WebSocketService _webSocket;
   Timer? _updateCheckTimer;
   Timer? _interactionTimer;
+  final SerializedAsyncThrottle _windowStateBroadcastThrottle =
+      SerializedAsyncThrottle(const Duration(milliseconds: 16));
   String? _activitySprite;
   bool _isChangingObedientMode = false;
   bool _groupsRefreshing = false;
@@ -265,7 +268,7 @@ class AppController extends ChangeNotifier {
     if (snapshot.timerPhase != TimerPhase.reminder) return;
     _bubbles.add(
       BubbleKind.feedback,
-      message: '行，记你一次。',
+      message: '已记录',
       feedbackTone: BubbleFeedbackTone.success,
     );
     _bubbles.removeKind(BubbleKind.reminder);
@@ -293,7 +296,7 @@ class AppController extends ChangeNotifier {
   void skipReminder() {
     _bubbles.add(
       BubbleKind.feedback,
-      message: '行，晚点再叫你。',
+      message: '已跳过',
       feedbackTone: BubbleFeedbackTone.warning,
     );
     _bubbles.removeKind(BubbleKind.reminder);
@@ -364,7 +367,7 @@ class AppController extends ChangeNotifier {
   void interact() {
     final sprite = snapshot.config.appMode == AppMode.obedient ? '得意' : '愤怒';
     _interactionTimer?.cancel();
-    _update(currentSprite: sprite);
+    _update(currentSprite: sprite, broadcast: false);
     _interactionTimer = Timer(
       snapshot.config.appMode == AppMode.obedient
           ? const Duration(milliseconds: 100)
@@ -375,6 +378,7 @@ class AppController extends ChangeNotifier {
           _update(
             currentSprite: fallback,
             clearCurrentSprite: fallback == null,
+            broadcast: false,
           );
         }
         _interactionTimer = null;
@@ -389,6 +393,7 @@ class AppController extends ChangeNotifier {
       _update(
         currentSprite: _activitySprite,
         clearCurrentSprite: _activitySprite == null,
+        broadcast: false,
       );
     }
   }
@@ -405,6 +410,7 @@ class AppController extends ChangeNotifier {
       petActivityPhase: phase,
       currentSprite: _isShowingInteractionSprite ? null : sprite,
       petFacingLeft: facingLeft,
+      broadcast: false,
     );
   }
 
@@ -417,7 +423,9 @@ class AppController extends ChangeNotifier {
 
   void setPetFacingLeft(bool value) {
     _activity.setFacingLeft(value);
-    if (snapshot.petFacingLeft != value) _update(petFacingLeft: value);
+    if (snapshot.petFacingLeft != value) {
+      _update(petFacingLeft: value, broadcast: false);
+    }
   }
 
   Future<void> settlePetWindow() async {
@@ -566,7 +574,6 @@ class AppController extends ChangeNotifier {
     } else if (groupId != null) {
       await loadChat(groupId);
     }
-    notifyListeners();
     await DesktopHost.instance.openControlCenter(route, groupId: groupId);
   }
 
@@ -609,6 +616,22 @@ class AppController extends ChangeNotifier {
   Future<String?> cachedAvatarPath(String avatarUrl) =>
       _avatarCache.pathFor(resolveApiAssetUrl(avatarUrl));
 
+  String avatarUrlForChatMessage(ChatMessage message) {
+    if (message.userId == snapshot.config.userId) {
+      final currentAvatar = snapshot.config.avatarUrl?.trim() ?? '';
+      if (currentAvatar.isNotEmpty) return currentAvatar;
+    }
+    final messageAvatar = message.avatarUrl.trim();
+    if (messageAvatar.isNotEmpty) return messageAvatar;
+    for (final group in groups) {
+      if (group.groupId != message.groupId) continue;
+      for (final member in group.members) {
+        if (member.userId == message.userId) return member.avatarUrl;
+      }
+    }
+    return '';
+  }
+
   Future<void> removeCustomMedia(String slot) async {
     final media = Map<String, CustomActionMediaEntry>.of(
       snapshot.config.customActionMedia,
@@ -647,7 +670,7 @@ class AppController extends ChangeNotifier {
         : const <String, dynamic>{};
     switch (WindowCommand.values.byName(commandName)) {
       case WindowCommand.requestSnapshot:
-        _broadcastWindowState();
+        _broadcastWindowState(immediate: true);
       case WindowCommand.completeReminder:
         await completeReminder();
       case WindowCommand.skipReminder:
@@ -706,7 +729,6 @@ class AppController extends ChangeNotifier {
       case WindowCommand.quit:
         await DesktopHost.instance.quit();
     }
-    _broadcastWindowState();
     return true;
   }
 
@@ -730,26 +752,30 @@ class AppController extends ChangeNotifier {
         'backendConnectionState': backendConnectionState.name,
       };
 
-  void _broadcastWindowState() {
-    unawaited(
-      DesktopHost.instance.broadcastState(
+  void _broadcastWindowState({bool immediate = false}) {
+    _windowStateBroadcastThrottle.schedule(
+      () => DesktopHost.instance.broadcastState(
         _windowStatePayload(),
         snapshot.revision,
       ),
+      immediate: immediate,
     );
   }
 
-  @override
-  void notifyListeners() {
+  void _notifyListeners({bool broadcast = true}) {
     super.notifyListeners();
-    _broadcastWindowState();
+    if (broadcast) _broadcastWindowState();
   }
+
+  @override
+  void notifyListeners() => _notifyListeners();
 
   @override
   void dispose() {
     _timer.dispose();
     _bubbles.dispose();
     _activity.dispose();
+    _windowStateBroadcastThrottle.dispose();
     _updateCheckTimer?.cancel();
     _interactionTimer?.cancel();
     unawaited(_webSocket.disconnect());
@@ -787,7 +813,7 @@ class AppController extends ChangeNotifier {
   void _onTimerFire() {
     _activity.stop();
     _bubbles.add(BubbleKind.reminder);
-    _update(currentSprite: '停止');
+    _update(currentSprite: '停止', broadcast: false);
   }
 
   void _onBubblesChanged(List<BubbleItem> bubbles) => _update(bubbles: bubbles);
@@ -809,7 +835,7 @@ class AppController extends ChangeNotifier {
           senderAvatarUrl: event.avatarUrl,
           groupId: event.groupId,
         );
-        _update(currentSprite: '哇');
+        _update(currentSprite: '哇', broadcast: false);
       case ChatServerEvent():
         unawaited(_handleIncomingChat(event.message));
     }
@@ -899,6 +925,7 @@ class AppController extends ChangeNotifier {
     bool clearDockSide = false,
     String? lastError,
     bool clearLastError = false,
+    bool broadcast = true,
   }) {
     snapshot = snapshot.copyWith(
       revision: snapshot.revision + 1,
@@ -916,7 +943,7 @@ class AppController extends ChangeNotifier {
       lastError: lastError,
       clearLastError: clearLastError,
     );
-    notifyListeners();
+    _notifyListeners(broadcast: broadcast);
   }
 }
 
@@ -940,10 +967,7 @@ class ReplicaAppController extends AppController {
       _applyWindowState,
       onNavigate: (route, groupId) {
         controlRoute = route;
-        if (groupId != null) {
-          activeChatGroupId = groupId;
-          unawaited(loadChat(groupId));
-        }
+        if (groupId != null) activeChatGroupId = groupId;
         super.notifyListeners();
       },
     );
@@ -1013,18 +1037,6 @@ class ReplicaAppController extends AppController {
   @override
   Future<void> toggleObedientMode() =>
       DesktopHost.instance.sendCommand(WindowCommand.toggleObedientMode);
-
-  @override
-  void selectControlRoute(ControlRoute route, {String? groupId}) {
-    super.selectControlRoute(route, groupId: groupId);
-    unawaited(DesktopHost.instance.updateControlWindowRoute(route));
-    unawaited(
-      DesktopHost.instance.sendCommand(
-        WindowCommand.openControlCenter,
-        arguments: <String, dynamic>{'route': route.name, 'groupId': groupId},
-      ),
-    );
-  }
 
   @override
   Future<void> openControlCenter(ControlRoute route, {String? groupId}) =>

@@ -4,22 +4,23 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 abstract final class AppColors {
-  static const canvas = Color(0xFFF6F0E6);
-  static const sidebar = Color(0xFFF0E6D7);
-  static const surface = Color(0xFFFFFCF5);
-  static const muted = Color(0xFFF8EEDF);
-  static const border = Color(0xFFE4D6C1);
-  static const text = Color(0xFF211B17);
-  static const secondaryText = Color(0xFF756B61);
-  static const accent = Color(0xFF087F73);
-  static const accentHover = Color(0xFF066B61);
-  static const accentSoft = Color(0xFFDDF3EE);
-  static const coral = Color(0xFFFF6A5F);
-  static const success = Color(0xFF087F73);
-  static const danger = Color(0xFFC34238);
-  static const dangerSoft = Color(0xFFFCE7E4);
-  static const warning = Color(0xFF8A5A12);
-  static const warningSoft = Color(0xFFFFF1CF);
+  // Apple-like light palette: white surfaces, graphite text, and system blue.
+  static const canvas = Color(0xFFF5F5F7);
+  static const sidebar = Color(0xFFF2F2F7);
+  static const surface = Colors.white;
+  static const muted = Color(0xFFF2F2F7);
+  static const border = Color(0xFFD2D2D7);
+  static const text = Color(0xFF1D1D1F);
+  static const secondaryText = Color(0xFF6E6E73);
+  static const accent = Color(0xFF007AFF);
+  static const accentHover = Color(0xFF0066CC);
+  static const accentSoft = Color(0xFFE5F1FF);
+  static const coral = Color(0xFFFF3B30);
+  static const success = Color(0xFF34C759);
+  static const danger = Color(0xFFFF3B30);
+  static const dangerSoft = Color(0xFFFFF0F0);
+  static const warning = Color(0xFFFF9500);
+  static const warningSoft = Color(0xFFFFF4E5);
   static const comicPaper = surface;
   static const comicInk = text;
 }
@@ -68,24 +69,24 @@ class AppVisualTokens extends ThemeExtension<AppVisualTokens> {
     warning: AppColors.warning,
     warningSoft: AppColors.warningSoft,
     spaceUnit: 4,
-    controlRadius: 10,
-    cardRadius: 14,
-    bubbleRadius: 18,
+    controlRadius: 8,
+    cardRadius: 12,
+    bubbleRadius: 14,
     hoverDuration: Duration(milliseconds: 120),
     transitionDuration: Duration(milliseconds: 180),
     emphasisDuration: Duration(milliseconds: 260),
     surfaceShadow: <BoxShadow>[
       BoxShadow(
-        color: Color(0x10000000),
-        blurRadius: 12,
-        offset: Offset(0, 4),
+        color: Color(0x12000000),
+        blurRadius: 10,
+        offset: Offset(0, 2),
       ),
     ],
     floatingShadow: <BoxShadow>[
       BoxShadow(
-        color: Color(0x24000000),
-        blurRadius: 28,
-        offset: Offset(0, 12),
+        color: Color(0x22000000),
+        blurRadius: 24,
+        offset: Offset(0, 8),
       ),
     ],
   );
@@ -231,8 +232,8 @@ ThemeData buildAppTheme() {
     fontFamilyFallback: const <String>['Segoe UI Emoji', 'Apple Color Emoji'],
     visualDensity: VisualDensity.standard,
     focusColor: AppColors.accentSoft,
-    hoverColor: AppColors.accent.withValues(alpha: 0.06),
-    splashColor: AppColors.accent.withValues(alpha: 0.10),
+    hoverColor: AppColors.accent.withValues(alpha: 0.08),
+    splashColor: AppColors.accent.withValues(alpha: 0.12),
     extensions: const <ThemeExtension<dynamic>>[AppVisualTokens.standard],
     textTheme: const TextTheme(
       headlineSmall: TextStyle(

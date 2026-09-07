@@ -22,6 +22,8 @@ const Size bubbleWindowSize = Size(312, 204);
 const double petVisualAreaWidth = 164;
 const double petSpriteLeadingInset = 28;
 const double petSpriteWidth = 108;
+const double _petWalkSpeed = 18;
+const Duration _petMotionFrameInterval = Duration(microseconds: 16667);
 
 double petVisualLeftForDockSide(PetDockSide? side) => side == PetDockSide.right
     ? dockedPetWindowSize.width - petVisualAreaWidth
@@ -105,6 +107,51 @@ Offset calculateBubbleWindowPosition({
 bool shouldUseSeparateBubbleWindow(TargetPlatform platform) =>
     platform == TargetPlatform.macOS || platform == TargetPlatform.windows;
 
+@visibleForTesting
+({double x, bool facingLeft}) advancePetWalkPosition({
+  required double currentX,
+  required double distance,
+  required double minX,
+  required double maxX,
+  required bool facingLeft,
+}) {
+  if (maxX <= minX) return (x: minX, facingLeft: false);
+  var x = currentX + (facingLeft ? -distance : distance);
+  var nextFacingLeft = facingLeft;
+  while (x < minX || x > maxX) {
+    if (x < minX) {
+      x = minX + (minX - x);
+      nextFacingLeft = false;
+    } else {
+      x = maxX - (x - maxX);
+      nextFacingLeft = true;
+    }
+  }
+  return (x: x, facingLeft: nextFacingLeft);
+}
+
+enum _PetMotionKind { walk, flight }
+
+class _PetMotionSession {
+  _PetMotionSession({
+    required this.kind,
+    required this.position,
+    required this.size,
+    required this.visiblePosition,
+    required this.visibleSize,
+  });
+
+  final _PetMotionKind kind;
+  Offset position;
+  final Size size;
+  final Offset visiblePosition;
+  final Size visibleSize;
+  Duration? lastElapsed;
+
+  double get minX => visiblePosition.dx + 30;
+  double get maxX => visiblePosition.dx + visibleSize.width - size.width - 30;
+}
+
 class StartupResult {
   const StartupResult({
     required this.launchArguments,
@@ -160,8 +207,14 @@ class DesktopHost with TrayListener, WindowListener {
   Timer? _moveSettledTimer;
   VoidCallback? onPetMoveSettled;
   final SerializedAsyncThrottle _bubbleAnchorThrottle = SerializedAsyncThrottle(
-    const Duration(milliseconds: 33),
+    _petMotionFrameInterval,
   );
+  _PetMotionSession? _petMotionSession;
+  Size? _lastAppliedBubbleSize;
+  bool _petDragInProgress = false;
+  int _petMotionGeneration = 0;
+  ControlRoute? _configuredControlRoute;
+  DateTime _ignoreMoveSettledUntil = DateTime.fromMillisecondsSinceEpoch(0);
   bool _disposed = false;
   bool _trayAvailable = true;
 
@@ -278,18 +331,6 @@ class DesktopHost with TrayListener, WindowListener {
       }
       if (call.method == 'anchor' && call.arguments is Map) {
         final anchor = (call.arguments as Map).cast<String, dynamic>();
-        final petPosition = Offset(
-          (anchor['x'] as num).toDouble(),
-          (anchor['y'] as num).toDouble(),
-        );
-        final petSize = Size(
-          (anchor['width'] as num).toDouble(),
-          (anchor['height'] as num).toDouble(),
-        );
-        final dockSideName = anchor['dockSide'] as String?;
-        final dockSide = dockSideName == null
-            ? null
-            : PetDockSide.values.byName(dockSideName);
         final obedient = anchor['obedient'] as bool? ?? false;
         final contentSize = Size(
           (anchor['contentWidth'] as num?)?.toDouble() ??
@@ -301,21 +342,14 @@ class DesktopHost with TrayListener, WindowListener {
                   ? obedientBubbleContentSize.height
                   : normalBubbleContentSize.height),
         );
-        await windowManager.setSize(contentSize);
-        final display = await _displayFor(petPosition, petSize);
-        final visiblePosition = display.visiblePosition ?? Offset.zero;
-        final visibleSize = display.visibleSize ?? display.size;
-        await windowManager.setPosition(
-          calculateBubbleWindowPosition(
-            petPosition: petPosition,
-            petSize: petSize,
-            bubbleSize: contentSize,
-            visiblePosition: visiblePosition,
-            visibleSize: visibleSize,
-            dockSide: dockSide,
-            obedient: obedient,
-          ),
-        );
+        if (_lastAppliedBubbleSize != contentSize) {
+          await windowManager.setSize(contentSize);
+          _lastAppliedBubbleSize = contentSize;
+        }
+        await windowManager.setPosition(Offset(
+          (anchor['positionX'] as num).toDouble(),
+          (anchor['positionY'] as num).toDouble(),
+        ));
         return true;
       }
       if (call.method == 'navigate' && call.arguments is Map) {
@@ -325,8 +359,6 @@ class DesktopHost with TrayListener, WindowListener {
         );
         onNavigate?.call(route, arguments['groupId'] as String?);
         await _resizeControlWindow(route);
-        await windowManager.show();
-        await windowManager.focus();
         return true;
       }
       if (call.method != 'stateSnapshot' || call.arguments is! String) {
@@ -545,37 +577,73 @@ class DesktopHost with TrayListener, WindowListener {
   }
 
   Future<void> startPetDrag() async {
-    final size = await windowManager.getSize();
-    if (size.width < 200) await windowManager.setSize(petWindowSize);
-    await windowManager.startDragging();
+    _petDragInProgress = true;
+    _petMotionGeneration += 1;
+    _petMotionSession = null;
+    try {
+      final size = await windowManager.getSize();
+      if (size.width < 200) await windowManager.setSize(petWindowSize);
+      await windowManager.startDragging();
+      _schedulePetMoveSettled(const Duration(milliseconds: 500));
+    } on Object {
+      _petDragInProgress = false;
+      rethrow;
+    }
   }
 
-  Future<bool> movePetStep(bool facingLeft) async {
+  Future<void> beginPetWalk() async {
+    if (_petDragInProgress) return;
+    final generation = ++_petMotionGeneration;
     final position = await windowManager.getPosition();
     final size = await windowManager.getSize();
-    if (size.width < 200) return facingLeft;
+    if (size.width < 200) return;
     final display = await _displayFor(position, size);
-    final visiblePosition = display.visiblePosition ?? Offset.zero;
-    final visibleSize = display.visibleSize ?? display.size;
-    final minX = visiblePosition.dx + 30;
-    final maxX = visiblePosition.dx + visibleSize.width - size.width - 30;
-    var nextX = position.dx + (facingLeft ? -0.9 : 0.9);
-    var nextFacingLeft = facingLeft;
-    if (nextX <= minX) {
-      nextX = minX;
-      nextFacingLeft = false;
-    } else if (nextX >= maxX) {
-      nextX = maxX;
-      nextFacingLeft = true;
-    }
-    await windowManager.setPosition(Offset(nextX, position.dy));
-    return nextFacingLeft;
+    if (_petDragInProgress || generation != _petMotionGeneration) return;
+    _petMotionSession = _PetMotionSession(
+      kind: _PetMotionKind.walk,
+      position: position,
+      size: size,
+      visiblePosition: display.visiblePosition ?? Offset.zero,
+      visibleSize: display.visibleSize ?? display.size,
+    );
+  }
+
+  void endPetWalk() {
+    if (_petMotionSession?.kind != _PetMotionKind.walk) return;
+    _petMotionGeneration += 1;
+    _petMotionSession = null;
+    _schedulePetMoveSettled(const Duration(milliseconds: 180));
+  }
+
+  Future<bool> movePetStep(bool facingLeft, Duration elapsed) async {
+    if (_petDragInProgress) return facingLeft;
+    if (_petMotionSession == null) await beginPetWalk();
+    final session = _petMotionSession;
+    if (session == null) return facingLeft;
+    final previousElapsed = session.lastElapsed;
+    session.lastElapsed = elapsed;
+    if (previousElapsed == null) return facingLeft;
+    final elapsedSeconds = (elapsed - previousElapsed).inMicroseconds /
+        Duration.microsecondsPerSecond;
+    if (elapsedSeconds <= 0) return facingLeft;
+    final next = advancePetWalkPosition(
+      currentX: session.position.dx,
+      distance: _petWalkSpeed * elapsedSeconds.clamp(0, 0.05),
+      minX: session.minX,
+      maxX: session.maxX,
+      facingLeft: facingLeft,
+    );
+    session.position = Offset(next.x, session.position.dy);
+    await windowManager.setPosition(session.position);
+    return next.facingLeft;
   }
 
   Future<void> performPetFlight(
     bool preferLeft, {
     ValueChanged<bool>? onDirectionResolved,
   }) async {
+    _petMotionGeneration += 1;
+    _petMotionSession = null;
     final start = await windowManager.getPosition();
     final size = await windowManager.getSize();
     final display = await _displayFor(start, size);
@@ -597,18 +665,41 @@ class DesktopHost with TrayListener, WindowListener {
     final travel = math.min(120.0, available);
     final horizontal = flyLeft ? -travel : travel;
     onDirectionResolved?.call(flyLeft);
+    final motion = _PetMotionSession(
+      kind: _PetMotionKind.flight,
+      position: start,
+      size: size,
+      visiblePosition: origin,
+      visibleSize: visible,
+    );
+    _petMotionSession = motion;
     final stopwatch = Stopwatch()..start();
     const duration = Duration(milliseconds: 1600);
-    while (stopwatch.elapsed < duration) {
-      final t = stopwatch.elapsedMicroseconds / duration.inMicroseconds;
-      final x = start.dx + horizontal * t;
-      final y = start.dy - 4 * size.height * t * (1 - t);
-      await windowManager.setPosition(Offset(x, y));
-      await Future<void>.delayed(
-        Duration(milliseconds: Platform.isWindows ? 33 : 16),
-      );
+    var frame = 0;
+    try {
+      while (stopwatch.elapsed < duration) {
+        final t = stopwatch.elapsedMicroseconds / duration.inMicroseconds;
+        final easedX = Curves.easeInOutCubic.transform(t);
+        final x = start.dx + horizontal * easedX;
+        final y = start.dy - 4 * size.height * t * (1 - t);
+        motion.position = Offset(x, y);
+        await windowManager.setPosition(motion.position);
+        frame += 1;
+        final nextFrame = _petMotionFrameInterval * frame;
+        final remaining = nextFrame - stopwatch.elapsed;
+        if (remaining > Duration.zero) {
+          await Future<void>.delayed(remaining);
+        }
+      }
+      motion.position = Offset(start.dx + horizontal, start.dy);
+      await windowManager.setPosition(motion.position);
+    } finally {
+      if (identical(_petMotionSession, motion)) {
+        _petMotionSession = null;
+        _ignoreMoveSettledUntil =
+            DateTime.now().add(const Duration(milliseconds: 300));
+      }
     }
-    await windowManager.setPosition(Offset(start.dx + horizontal, start.dy));
   }
 
   Future<({Offset position, PetDockSide? dockSide})> settlePetWindow(
@@ -768,11 +859,19 @@ class DesktopHost with TrayListener, WindowListener {
   @override
   void onWindowMoved() {
     if (launchArguments.role != WindowRole.pet) return;
+    if (_petMotionSession == null &&
+        DateTime.now().isAfter(_ignoreMoveSettledUntil)) {
+      _schedulePetMoveSettled(const Duration(milliseconds: 180));
+    }
+    _scheduleBubblePosition();
+  }
+
+  void _schedulePetMoveSettled(Duration delay) {
     _moveSettledTimer?.cancel();
-    _moveSettledTimer = Timer(const Duration(milliseconds: 180), () {
+    _moveSettledTimer = Timer(delay, () {
+      _petDragInProgress = false;
       onPetMoveSettled?.call();
     });
-    _scheduleBubblePosition();
   }
 
   @override
@@ -802,18 +901,39 @@ class DesktopHost with TrayListener, WindowListener {
   Future<void> _positionBubbleNearPet() async {
     final bubble = _bubbleWindow;
     if (bubble == null || launchArguments.role != WindowRole.pet) return;
-    final position = await windowManager.getPosition();
-    final size = await windowManager.getSize();
     try {
+      final motion = _petMotionSession;
+      late final Offset position;
+      late final Size size;
+      late final Offset visiblePosition;
+      late final Size visibleSize;
+      if (motion != null) {
+        position = motion.position;
+        size = motion.size;
+        visiblePosition = motion.visiblePosition;
+        visibleSize = motion.visibleSize;
+      } else {
+        position = await windowManager.getPosition();
+        size = await windowManager.getSize();
+        final display = await _displayFor(position, size);
+        visiblePosition = display.visiblePosition ?? Offset.zero;
+        visibleSize = display.visibleSize ?? display.size;
+      }
       final obedient = _bubbleObedient;
       final contentSize =
           obedient ? obedientBubbleContentSize : normalBubbleContentSize;
+      final bubblePosition = calculateBubbleWindowPosition(
+        petPosition: position,
+        petSize: size,
+        bubbleSize: contentSize,
+        visiblePosition: visiblePosition,
+        visibleSize: visibleSize,
+        dockSide: _bubbleDockSide,
+        obedient: obedient,
+      );
       await bubble.invokeMethod<void>('anchor', <String, dynamic>{
-        'x': position.dx,
-        'y': position.dy,
-        'width': size.width,
-        'height': size.height,
-        'dockSide': _bubbleDockSide?.name,
+        'positionX': bubblePosition.dx,
+        'positionY': bubblePosition.dy,
         'obedient': obedient,
         'contentWidth': contentSize.width,
         'contentHeight': contentSize.height,
@@ -861,6 +981,7 @@ class DesktopHost with TrayListener, WindowListener {
     if (_disposed) return;
     _disposed = true;
     _moveSettledTimer?.cancel();
+    _petMotionSession = null;
     _bubbleAnchorThrottle.dispose();
     windowManager.removeListener(this);
     await _currentWindow?.setWindowMethodHandler(null);
@@ -931,6 +1052,14 @@ class DesktopHost with TrayListener, WindowListener {
 
   Future<void> _resizeControlWindow(ControlRoute route) async {
     if (launchArguments.role != WindowRole.controlCenter) return;
+    final previousRoute = _configuredControlRoute;
+    if (previousRoute == route ||
+        (previousRoute != null &&
+            _isSettingsRoute(previousRoute) &&
+            _isSettingsRoute(route))) {
+      _configuredControlRoute = route;
+      return;
+    }
     final title = switch (route) {
       ControlRoute.timer ||
       ControlRoute.groups ||
@@ -951,7 +1080,14 @@ class DesktopHost with TrayListener, WindowListener {
     await windowManager.setMinimumSize(_minimumControlSizeFor(route));
     await windowManager.setResizable(true);
     await windowManager.setSize(_controlSizeFor(route), animate: true);
+    _configuredControlRoute = route;
   }
+
+  static bool _isSettingsRoute(ControlRoute route) =>
+      route == ControlRoute.timer ||
+      route == ControlRoute.groups ||
+      route == ControlRoute.media ||
+      route == ControlRoute.about;
 
   WindowController? _windowForRoute(ControlRoute route) => switch (route) {
         ControlRoute.chat => _chatWindow,
