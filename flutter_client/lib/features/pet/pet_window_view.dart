@@ -526,17 +526,17 @@ List<Offset> petActionCenters(
   bool expanded = true,
 }) {
   const quickRightArc = <Offset>[
-    Offset(126, 28),
-    Offset(153, 76),
-    Offset(158, 124),
-    Offset(143, 172),
+    Offset(126, 22),
+    Offset(153, 62),
+    Offset(158, 102),
+    Offset(143, 142),
   ];
   const expandedRightArc = <Offset>[
-    Offset(107, 24),
-    Offset(147, 53),
-    Offset(158, 100),
-    Offset(147, 147),
-    Offset(107, 176),
+    Offset(107, 20),
+    Offset(147, 56),
+    Offset(158, 92),
+    Offset(147, 128),
+    Offset(107, 164),
   ];
   final rightArc = expanded ? expandedRightArc : quickRightArc;
   if (dockSide != PetDockSide.right) return rightArc;

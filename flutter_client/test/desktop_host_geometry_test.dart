@@ -108,6 +108,23 @@ void main() {
     }
   });
 
+  test('pet action hit targets keep a safe margin from the window edges', () {
+    for (final dockSide in <PetDockSide?>[
+      null,
+      ...PetDockSide.values,
+    ]) {
+      final windowSize = dockSide == null ? petWindowSize : dockedPetWindowSize;
+      for (final expanded in <bool>[false, true]) {
+        for (final center in petActionCenters(dockSide, expanded: expanded)) {
+          expect(center.dx - 26, greaterThanOrEqualTo(4));
+          expect(center.dx + 26, lessThanOrEqualTo(windowSize.width - 4));
+          expect(center.dy - 26, greaterThanOrEqualTo(4));
+          expect(center.dy + 26, lessThanOrEqualTo(windowSize.height - 4));
+        }
+      }
+    }
+  });
+
   test('quick pet actions keep comfortable spacing between hit targets', () {
     final centers = petActionCenters(null, expanded: false);
 
