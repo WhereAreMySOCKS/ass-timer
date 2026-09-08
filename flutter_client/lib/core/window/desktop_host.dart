@@ -34,6 +34,15 @@ double petVisualLeftForDockSide(PetDockSide? side) => side == PetDockSide.right
     : 0;
 
 @visibleForTesting
+Rect petOverlayInteractiveRect(PetDockSide? dockSide, Size windowSize) {
+  if (dockSide == null) return Offset.zero & windowSize;
+  final left = dockSide == PetDockSide.right
+      ? windowSize.width - petVisualAreaWidth
+      : 0.0;
+  return Rect.fromLTWH(left, 0, petVisualAreaWidth, windowSize.height);
+}
+
+@visibleForTesting
 Offset calculateDockedPetPosition({
   required Offset visiblePosition,
   required Size visibleSize,
@@ -797,6 +806,13 @@ class DesktopHost with TrayListener, WindowListener {
       side: side,
     );
     await windowManager.setSize(dockedPetWindowSize);
+    await _setMacOverlayWindow(
+      true,
+      interactiveRect: petOverlayInteractiveRect(
+        side,
+        dockedPetWindowSize,
+      ),
+    );
     await _setPetPosition(position, animate: true);
     return position;
   }
@@ -818,6 +834,10 @@ class DesktopHost with TrayListener, WindowListener {
       ),
     );
     await windowManager.setSize(petWindowSize);
+    await _setMacOverlayWindow(
+      true,
+      interactiveRect: petOverlayInteractiveRect(null, petWindowSize),
+    );
     await _setPetPosition(position, animate: true);
     return position;
   }
@@ -868,11 +888,23 @@ class DesktopHost with TrayListener, WindowListener {
     }
   }
 
-  Future<void> _setMacOverlayWindow(bool enabled) async {
+  Future<void> _setMacOverlayWindow(
+    bool enabled, {
+    Rect? interactiveRect,
+  }) async {
     if (!Platform.isMacOS) return;
     await _desktopHostChannel.invokeMethod<void>(
       'setOverlayWindow',
-      <String, bool>{'enabled': enabled},
+      <String, dynamic>{
+        'enabled': enabled,
+        if (interactiveRect != null)
+          'interactiveRect': <String, double>{
+            'x': interactiveRect.left,
+            'y': interactiveRect.top,
+            'width': interactiveRect.width,
+            'height': interactiveRect.height,
+          },
+      },
     );
   }
 

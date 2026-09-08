@@ -14,6 +14,21 @@ void main() {
     expect(shouldUseSeparateBubbleWindow(TargetPlatform.macOS), isTrue);
   });
 
+  test('obedient overlay only captures the visible pet side of the window', () {
+    expect(
+      petOverlayInteractiveRect(PetDockSide.left, dockedPetWindowSize),
+      const Rect.fromLTWH(0, 0, 164, 200),
+    );
+    expect(
+      petOverlayInteractiveRect(PetDockSide.right, dockedPetWindowSize),
+      const Rect.fromLTWH(20, 0, 164, 200),
+    );
+    expect(
+      petOverlayInteractiveRect(null, petWindowSize),
+      const Rect.fromLTWH(0, 0, 224, 200),
+    );
+  });
+
   test('Windows bubble backing size matches normal rendered content', () {
     expect(windowsBubbleWindowSize, normalBubbleContentSize);
   });

@@ -17,7 +17,36 @@ private func configureTransparentFlutterSurface(_ controller: FlutterViewControl
 
 }
 
-private func configureOverlayWindow(_ window: NSWindow, enabled: Bool) {
+private final class OverlayHitTestView: NSView {
+  var interactiveRect: NSRect?
+
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    if let interactiveRect, !interactiveRect.contains(point) {
+      return nil
+    }
+    return super.hitTest(point)
+  }
+}
+
+private func installOverlayHitTestView(_ window: NSWindow) -> OverlayHitTestView? {
+  if let view = window.contentView as? OverlayHitTestView {
+    return view
+  }
+  guard let contentView = window.contentView else { return nil }
+  let wrapper = OverlayHitTestView(frame: contentView.frame)
+  wrapper.autoresizingMask = [.width, .height]
+  window.contentView = wrapper
+  contentView.frame = wrapper.bounds
+  contentView.autoresizingMask = [.width, .height]
+  wrapper.addSubview(contentView)
+  return wrapper
+}
+
+private func configureOverlayWindow(
+  _ window: NSWindow,
+  enabled: Bool,
+  interactiveRect: NSRect? = nil
+) {
   let overlayBehaviors: NSWindow.CollectionBehavior = [
     .canJoinAllSpaces,
     .fullScreenAuxiliary,
@@ -38,9 +67,11 @@ private func configureOverlayWindow(_ window: NSWindow, enabled: Bool) {
     window.hasShadow = false
     window.acceptsMouseMovedEvents = true
     window.ignoresMouseEvents = false
+    installOverlayHitTestView(window)?.interactiveRect = interactiveRect
   } else {
     window.collectionBehavior.remove(overlayBehaviors)
     window.level = .normal
+    installOverlayHitTestView(window)?.interactiveRect = nil
   }
 }
 
@@ -68,7 +99,21 @@ private func registerDesktopHostChannel(_ controller: FlutterViewController) {
         ))
         return
       }
-      configureOverlayWindow(window, enabled: enabled)
+      let rectData = arguments?["interactiveRect"] as? [String: Any]
+      let interactiveRect: NSRect? = if let rectData,
+          let x = rectData["x"] as? CGFloat,
+          let y = rectData["y"] as? CGFloat,
+          let width = rectData["width"] as? CGFloat,
+          let height = rectData["height"] as? CGFloat {
+        NSRect(x: x, y: y, width: width, height: height)
+      } else {
+        nil
+      }
+      configureOverlayWindow(
+        window,
+        enabled: enabled,
+        interactiveRect: interactiveRect
+      )
       result(nil)
     default:
       result(FlutterMethodNotImplemented)
