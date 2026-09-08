@@ -39,4 +39,41 @@ void main() {
 
     expect(decoded.payload['command'], 'clearLocalData');
   });
+
+  test('state responses preserve joined groups and chat messages', () {
+    final snapshot = AppSnapshot.initial().copyWith(
+      revision: 4,
+      config: const UserConfig(
+        joinedGroups: <JoinedGroup>[
+          JoinedGroup(
+            groupId: 'group-1',
+            groupName: '测试群',
+            inviteCode: 'ABC123',
+          ),
+        ],
+      ),
+    );
+    final encoded = WindowEnvelope(
+      type: WindowMessageType.stateSnapshot,
+      revision: snapshot.revision,
+      payload: <String, dynamic>{
+        'snapshot': snapshot.toJson(),
+        'chatMessages': <String, dynamic>{
+          'group-1': <Map<String, dynamic>>[],
+        },
+      },
+    ).encode();
+
+    final decoded = WindowEnvelope.decode(encoded);
+    final decodedSnapshot = AppSnapshot.fromJson(
+      decoded.payload['snapshot'] as Map<String, dynamic>,
+    );
+
+    expect(decoded.type, WindowMessageType.stateSnapshot);
+    expect(decodedSnapshot.config.joinedGroups.single.groupId, 'group-1');
+    expect(
+      (decoded.payload['chatMessages'] as Map<String, dynamic>)['group-1'],
+      isEmpty,
+    );
+  });
 }

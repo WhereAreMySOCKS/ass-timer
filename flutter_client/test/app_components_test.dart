@@ -7,6 +7,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Windows uses its native UI font stack', () {
+    expect(appFontFamilyFor(TargetPlatform.windows), 'Segoe UI');
+    expect(appFontFamilyFor(TargetPlatform.macOS), isNull);
+  });
+
   testWidgets('danger confirmation cancels with Escape and focuses cancel',
       (tester) async {
     bool? result;

@@ -14,6 +14,34 @@ import 'package:shared_preferences_platform_interface/in_memory_shared_preferenc
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 void main() {
+  test('background removal is hidden on Windows', () {
+    expect(
+      shouldShowBackgroundRemovalButton(TargetPlatform.windows),
+      isFalse,
+    );
+    expect(
+      shouldShowBackgroundRemovalButton(TargetPlatform.macOS),
+      isTrue,
+    );
+  });
+
+  test('own avatar falls back to the current profile', () {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    final controller = _FakeController(ControlRoute.leaderboard);
+    controller.snapshot = controller.snapshot.copyWith(
+      config: controller.snapshot.config.copyWith(
+        avatarUrl: '/uploads/avatars/current.png',
+      ),
+    );
+
+    expect(
+      controller.avatarUrlForUser(userId: 'me', avatarUrl: ''),
+      '/uploads/avatars/current.png',
+    );
+    controller.dispose();
+  });
+
   const settingsRoutes = <ControlRoute>[
     ControlRoute.timer,
     ControlRoute.groups,

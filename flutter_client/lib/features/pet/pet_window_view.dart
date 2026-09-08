@@ -132,7 +132,11 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
       });
     }
     _bubbleOwnedLastFrame = bubbleOwnsInteraction;
-    DesktopHost.instance.onPetMoveSettled = controller.settlePetWindow;
+    DesktopHost.instance.onPetMoveSettled = () async {
+      await controller.settlePetWindow();
+      if (!mounted || !controller.isPetMoving) return;
+      setState(() => _walkController = controller);
+    };
     _syncWalking(controller);
     return Material(
       type: MaterialType.transparency,
@@ -168,7 +172,9 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
                     height: petWindowSize.height,
                     child: GestureDetector(
                       behavior: HitTestBehavior.translucent,
-                      onPanStart: (_) => DesktopHost.instance.startPetDrag(),
+                      onPanStart: (_) => _beginPetDrag(controller),
+                      onPanEnd: (_) => _endPetDrag(),
+                      onPanCancel: _endPetDrag,
                       onTap: () {
                         if (_menuPinned) _closePinnedMenu();
                         _handleTap(controller);
@@ -292,6 +298,19 @@ class _PetWindowViewState extends ConsumerState<PetWindowView>
     if (!MediaQuery.disableAnimationsOf(context)) {
       _clickController.forward(from: 0);
     }
+  }
+
+  void _beginPetDrag(AppController controller) {
+    _walkGeneration += 1;
+    _walkTicker.stop();
+    _walkStarting = false;
+    _walkController = null;
+    _lastWalkDispatch = Duration.zero;
+    unawaited(DesktopHost.instance.startPetDrag());
+  }
+
+  void _endPetDrag() {
+    DesktopHost.instance.endPetDrag();
   }
 
   Future<void> _handleDoubleTap(AppController controller) async {

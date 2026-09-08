@@ -1,6 +1,6 @@
-import 'dart:io';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 abstract final class AppColors {
@@ -204,6 +204,13 @@ extension AppThemeContext on BuildContext {
       Theme.of(this).extension<AppVisualTokens>() ?? AppVisualTokens.standard;
 }
 
+@visibleForTesting
+String? appFontFamilyFor(TargetPlatform platform) => switch (platform) {
+      TargetPlatform.windows => 'Segoe UI',
+      TargetPlatform.macOS => null,
+      _ => 'NotoSansSC',
+    };
+
 ThemeData buildAppTheme() {
   const scheme = ColorScheme.light(
     primary: AppColors.accent,
@@ -228,8 +235,16 @@ ThemeData buildAppTheme() {
     colorScheme: scheme,
     scaffoldBackgroundColor: AppColors.canvas,
     canvasColor: AppColors.canvas,
-    fontFamily: Platform.isMacOS ? null : 'NotoSansSC',
-    fontFamilyFallback: const <String>['Segoe UI Emoji', 'Apple Color Emoji'],
+    // Use the native Windows UI stack instead of the bundled variable CJK
+    // font. Some Windows DirectWrite configurations render that font with
+    // incorrect metrics, making labels look stretched and overly heavy.
+    fontFamily: appFontFamilyFor(defaultTargetPlatform),
+    fontFamilyFallback: const <String>[
+      'Microsoft YaHei UI',
+      'Microsoft YaHei',
+      'Segoe UI Emoji',
+      'Apple Color Emoji',
+    ],
     visualDensity: VisualDensity.standard,
     focusColor: AppColors.accentSoft,
     hoverColor: AppColors.accent.withValues(alpha: 0.08),

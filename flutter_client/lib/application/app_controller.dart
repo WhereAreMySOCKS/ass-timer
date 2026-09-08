@@ -617,16 +617,30 @@ class AppController extends ChangeNotifier {
       _avatarCache.pathFor(resolveApiAssetUrl(avatarUrl));
 
   String avatarUrlForChatMessage(ChatMessage message) {
-    if (message.userId == snapshot.config.userId) {
+    return avatarUrlForUser(
+      userId: message.userId,
+      avatarUrl: message.avatarUrl,
+      groupId: message.groupId,
+    );
+  }
+
+  String avatarUrlForUser({
+    required String userId,
+    required String avatarUrl,
+    String? groupId,
+  }) {
+    if (userId == snapshot.config.userId) {
       final currentAvatar = snapshot.config.avatarUrl?.trim() ?? '';
       if (currentAvatar.isNotEmpty) return currentAvatar;
     }
-    final messageAvatar = message.avatarUrl.trim();
-    if (messageAvatar.isNotEmpty) return messageAvatar;
+    final normalizedAvatar = avatarUrl.trim();
+    if (normalizedAvatar.isNotEmpty) return normalizedAvatar;
     for (final group in groups) {
-      if (group.groupId != message.groupId) continue;
+      if (groupId != null && group.groupId != groupId) continue;
       for (final member in group.members) {
-        if (member.userId == message.userId) return member.avatarUrl;
+        if (member.userId == userId && member.avatarUrl.trim().isNotEmpty) {
+          return member.avatarUrl;
+        }
       }
     }
     return '';
@@ -670,7 +684,11 @@ class AppController extends ChangeNotifier {
         : const <String, dynamic>{};
     switch (WindowCommand.values.byName(commandName)) {
       case WindowCommand.requestSnapshot:
-        _broadcastWindowState(immediate: true);
+        return WindowEnvelope(
+          type: WindowMessageType.stateSnapshot,
+          revision: snapshot.revision,
+          payload: _windowStatePayload(),
+        ).encode();
       case WindowCommand.completeReminder:
         await completeReminder();
       case WindowCommand.skipReminder:

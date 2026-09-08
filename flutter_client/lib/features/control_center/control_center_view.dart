@@ -8,12 +8,17 @@ import 'package:ass_timer_flutter/data/api_models.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:ass_timer_flutter/features/onboarding/circular_interval_picker.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
+
+@visibleForTesting
+bool shouldShowBackgroundRemovalButton(TargetPlatform platform) =>
+    platform != TargetPlatform.windows;
 
 class ControlCenterView extends ConsumerStatefulWidget {
   const ControlCenterView({super.key, this.initialRoute});
@@ -1754,7 +1759,10 @@ class _LeaderboardRow extends StatelessWidget {
           const SizedBox(width: 10),
           _UserAvatar(
             controller: controller,
-            avatarUrl: entry.avatarUrl,
+            avatarUrl: controller.avatarUrlForUser(
+              userId: entry.userId,
+              avatarUrl: entry.avatarUrl,
+            ),
             fallback: entry.petEmoji,
             size: 38,
           ),
@@ -2041,22 +2049,25 @@ class _MediaSlotCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 4),
-                Expanded(
-                  flex: 2,
-                  child: OutlinedButton(
-                    onPressed: entry == null ||
-                            entry.removesBackground ||
-                            !controller.supportsBackgroundRemoval
-                        ? null
-                        : () => controller.setBackgroundRemoval(
-                              slot.$1,
-                              true,
-                            ),
-                    style: _mediaActionButtonStyle,
-                    child: const Text('去除背景'),
+                if (shouldShowBackgroundRemovalButton(
+                    defaultTargetPlatform)) ...<Widget>[
+                  Expanded(
+                    flex: 2,
+                    child: OutlinedButton(
+                      onPressed: entry == null ||
+                              entry.removesBackground ||
+                              !controller.supportsBackgroundRemoval
+                          ? null
+                          : () => controller.setBackgroundRemoval(
+                                slot.$1,
+                                true,
+                              ),
+                      style: _mediaActionButtonStyle,
+                      child: const Text('去除背景'),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
+                  const SizedBox(width: 4),
+                ],
                 Expanded(
                   child: OutlinedButton(
                     onPressed: entry == null

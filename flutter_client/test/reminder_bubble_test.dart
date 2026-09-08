@@ -1,10 +1,29 @@
 import 'package:ass_timer_flutter/core/theme/app_theme.dart';
+import 'package:ass_timer_flutter/core/widgets/speech_bubble.dart';
 import 'package:ass_timer_flutter/core/window/bubble_layout.dart';
+import 'package:ass_timer_flutter/features/bubble/bubble_window_view.dart';
 import 'package:ass_timer_flutter/features/bubble/reminder_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Windows compact bubbles stay attached to the pet-facing edge', () {
+    expect(
+      bubbleContentAlignmentFor(
+        TargetPlatform.windows,
+        SpeechBubbleTail.left,
+      ),
+      Alignment.bottomLeft,
+    );
+    expect(
+      bubbleContentAlignmentFor(
+        TargetPlatform.windows,
+        SpeechBubbleTail.right,
+      ),
+      Alignment.bottomRight,
+    );
+  });
+
   testWidgets('normal reminder fits its native bubble window', (tester) async {
     await _pumpBubble(
       tester,

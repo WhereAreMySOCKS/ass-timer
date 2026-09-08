@@ -27,17 +27,17 @@ private func configureOverlayWindow(_ window: NSWindow, enabled: Bool) {
 
   if enabled {
     window.collectionBehavior.insert(overlayBehaviors)
-    // Menu-bar and pop-up-menu levels can still sit behind a foreground
-    // full-screen app. The screen-saver level plus `fullScreenAuxiliary`
-    // keeps this small, non-activating reminder overlay visible above every
-    // app space, including full-screen apps.
-    window.level = .screenSaver
+    // Keep the overlay at the same level used by window_manager's
+    // alwaysOnTop flag. A screen-saver level window is unnecessarily
+    // aggressive: when macOS changes Spaces for a full-screen app it can
+    // briefly remove and reinsert the window, which looks like a flicker.
+    // `fullScreenAuxiliary` still keeps the pet visible in full-screen Spaces.
+    window.level = .floating
     window.isOpaque = false
     window.backgroundColor = .clear
     window.hasShadow = false
     window.acceptsMouseMovedEvents = true
     window.ignoresMouseEvents = false
-    window.orderFrontRegardless()
   } else {
     window.collectionBehavior.remove(overlayBehaviors)
     window.level = .normal

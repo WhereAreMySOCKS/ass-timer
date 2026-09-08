@@ -14,6 +14,10 @@ void main() {
     expect(shouldUseSeparateBubbleWindow(TargetPlatform.macOS), isTrue);
   });
 
+  test('Windows bubble backing size matches normal rendered content', () {
+    expect(windowsBubbleWindowSize, normalBubbleContentSize);
+  });
+
   test('obedient bubble overlaps the pet window to stay visually attached', () {
     final position = calculateBubbleWindowPosition(
       petPosition: const Offset(-28, 400),

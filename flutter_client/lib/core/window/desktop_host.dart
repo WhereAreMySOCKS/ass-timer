@@ -19,6 +19,10 @@ import 'package:window_manager/window_manager.dart';
 const Size petWindowSize = Size(224, 200);
 const Size dockedPetWindowSize = Size(184, 200);
 const Size bubbleWindowSize = Size(312, 204);
+// Keep the Windows backing window close to the rendered surface. Resizing a
+// secondary Flutter window after its first frame can briefly use stale DPI
+// metrics and stretch the reminder surface.
+const Size windowsBubbleWindowSize = normalBubbleContentSize;
 const double petVisualAreaWidth = 164;
 const double petSpriteLeadingInset = 28;
 const double petSpriteWidth = 108;
@@ -205,10 +209,11 @@ class DesktopHost with TrayListener, WindowListener {
   final StreamController<String> _windowsPowerEvents =
       StreamController<String>.broadcast();
   Timer? _moveSettledTimer;
-  VoidCallback? onPetMoveSettled;
+  Future<void> Function()? onPetMoveSettled;
   final SerializedAsyncThrottle _bubbleAnchorThrottle = SerializedAsyncThrottle(
     _petMotionFrameInterval,
   );
+  Future<void> _petPositionOperation = Future<void>.value();
   _PetMotionSession? _petMotionSession;
   Size? _lastAppliedBubbleSize;
   bool _petDragInProgress = false;
@@ -232,8 +237,8 @@ class DesktopHost with TrayListener, WindowListener {
           titleBarStyle: TitleBarStyle.hidden,
           alwaysOnTop: true,
         ),
-      WindowRole.bubble => const WindowOptions(
-          size: bubbleWindowSize,
+      WindowRole.bubble => WindowOptions(
+          size: Platform.isWindows ? windowsBubbleWindowSize : bubbleWindowSize,
           backgroundColor: Colors.transparent,
           skipTaskbar: true,
           titleBarStyle: TitleBarStyle.hidden,
@@ -253,6 +258,7 @@ class DesktopHost with TrayListener, WindowListener {
       if (arguments.role != WindowRole.controlCenter) {
         await windowManager.setAsFrameless();
         await windowManager.setHasShadow(false);
+        await windowManager.setResizable(false);
         await windowManager.setAlwaysOnTop(true);
         await windowManager.setVisibleOnAllWorkspaces(
           true,
@@ -342,10 +348,10 @@ class DesktopHost with TrayListener, WindowListener {
                   ? obedientBubbleContentSize.height
                   : normalBubbleContentSize.height),
         );
-        if (_lastAppliedBubbleSize != contentSize) {
+        if (!Platform.isWindows && _lastAppliedBubbleSize != contentSize) {
           await windowManager.setSize(contentSize);
-          _lastAppliedBubbleSize = contentSize;
         }
+        _lastAppliedBubbleSize = contentSize;
         await windowManager.setPosition(Offset(
           (anchor['positionX'] as num).toDouble(),
           (anchor['positionY'] as num).toDouble(),
@@ -368,7 +374,21 @@ class DesktopHost with TrayListener, WindowListener {
       onState(envelope.payload, envelope.revision);
       return true;
     });
-    await sendCommand(WindowCommand.requestSnapshot);
+    final snapshot = await _requestStateSnapshot();
+    if (snapshot != null && snapshot.type == WindowMessageType.stateSnapshot) {
+      onState(snapshot.payload, snapshot.revision);
+    }
+  }
+
+  Future<WindowEnvelope?> _requestStateSnapshot() async {
+    final rootId = launchArguments.rootWindowId;
+    if (rootId == null) return null;
+    final root = WindowController.fromWindowId(rootId);
+    final encoded = await root.invokeMethod<String>(
+      'command',
+      WindowEnvelope.command(WindowCommand.requestSnapshot).encode(),
+    );
+    return encoded == null ? null : WindowEnvelope.decode(encoded);
   }
 
   Future<void> sendCommand(
@@ -578,17 +598,23 @@ class DesktopHost with TrayListener, WindowListener {
 
   Future<void> startPetDrag() async {
     _petDragInProgress = true;
+    _moveSettledTimer?.cancel();
     _petMotionGeneration += 1;
     _petMotionSession = null;
     try {
+      await _petPositionOperation;
       final size = await windowManager.getSize();
       if (size.width < 200) await windowManager.setSize(petWindowSize);
       await windowManager.startDragging();
-      _schedulePetMoveSettled(const Duration(milliseconds: 500));
     } on Object {
       _petDragInProgress = false;
       rethrow;
     }
+  }
+
+  void endPetDrag() {
+    if (!_petDragInProgress) return;
+    _schedulePetMoveSettled(const Duration(milliseconds: 180));
   }
 
   Future<void> beginPetWalk() async {
@@ -633,8 +659,17 @@ class DesktopHost with TrayListener, WindowListener {
       maxX: session.maxX,
       facingLeft: facingLeft,
     );
+    final generation = _petMotionGeneration;
+    if (_petDragInProgress ||
+        generation != _petMotionGeneration ||
+        !identical(_petMotionSession, session)) {
+      return facingLeft;
+    }
     session.position = Offset(next.x, session.position.dy);
-    await windowManager.setPosition(session.position);
+    await _setPetPosition(session.position);
+    if (generation != _petMotionGeneration || _petDragInProgress) {
+      return facingLeft;
+    }
     return next.facingLeft;
   }
 
@@ -683,7 +718,7 @@ class DesktopHost with TrayListener, WindowListener {
         final x = start.dx + horizontal * easedX;
         final y = start.dy - 4 * size.height * t * (1 - t);
         motion.position = Offset(x, y);
-        await windowManager.setPosition(motion.position);
+        await _setPetPosition(motion.position);
         frame += 1;
         final nextFrame = _petMotionFrameInterval * frame;
         final remaining = nextFrame - stopwatch.elapsed;
@@ -692,7 +727,7 @@ class DesktopHost with TrayListener, WindowListener {
         }
       }
       motion.position = Offset(start.dx + horizontal, start.dy);
-      await windowManager.setPosition(motion.position);
+      await _setPetPosition(motion.position);
     } finally {
       if (identical(_petMotionSession, motion)) {
         _petMotionSession = null;
@@ -745,7 +780,7 @@ class DesktopHost with TrayListener, WindowListener {
     }
     final maxY = visiblePosition.dy + visibleSize.height - size.height;
     position = Offset(position.dx, position.dy.clamp(visiblePosition.dy, maxY));
-    await windowManager.setPosition(position, animate: side != null);
+    await _setPetPosition(position, animate: side != null);
     return (position: position, dockSide: side);
   }
 
@@ -762,7 +797,7 @@ class DesktopHost with TrayListener, WindowListener {
       side: side,
     );
     await windowManager.setSize(dockedPetWindowSize);
-    await windowManager.setPosition(position, animate: true);
+    await _setPetPosition(position, animate: true);
     return position;
   }
 
@@ -783,7 +818,7 @@ class DesktopHost with TrayListener, WindowListener {
       ),
     );
     await windowManager.setSize(petWindowSize);
-    await windowManager.setPosition(position, animate: true);
+    await _setPetPosition(position, animate: true);
     return position;
   }
 
@@ -794,7 +829,7 @@ class DesktopHost with TrayListener, WindowListener {
     final display = await _displayFor(desired, size);
     final origin = display.visiblePosition ?? Offset.zero;
     final bounds = display.visibleSize ?? display.size;
-    await windowManager.setPosition(
+    await _setPetPosition(
       Offset(
         desired.dx.clamp(origin.dx, origin.dx + bounds.width - size.width),
         desired.dy.clamp(origin.dy, origin.dy + bounds.height - size.height),
@@ -859,19 +894,35 @@ class DesktopHost with TrayListener, WindowListener {
   @override
   void onWindowMoved() {
     if (launchArguments.role != WindowRole.pet) return;
-    if (_petMotionSession == null &&
+    if (!_petDragInProgress &&
+        _petMotionSession == null &&
         DateTime.now().isAfter(_ignoreMoveSettledUntil)) {
       _schedulePetMoveSettled(const Duration(milliseconds: 180));
     }
-    _scheduleBubblePosition();
+    if (!_petDragInProgress) _scheduleBubblePosition();
   }
 
   void _schedulePetMoveSettled(Duration delay) {
     _moveSettledTimer?.cancel();
     _moveSettledTimer = Timer(delay, () {
       _petDragInProgress = false;
-      onPetMoveSettled?.call();
+      final callback = onPetMoveSettled;
+      if (callback == null) {
+        _scheduleBubblePosition(immediate: true);
+        return;
+      }
+      unawaited(
+        callback().whenComplete(() => _scheduleBubblePosition(immediate: true)),
+      );
     });
+  }
+
+  Future<void> _setPetPosition(Offset position, {bool animate = false}) {
+    final operation = _petPositionOperation.then(
+      (_) => windowManager.setPosition(position, animate: animate),
+    );
+    _petPositionOperation = operation.catchError((Object _) {});
+    return operation;
   }
 
   @override
@@ -922,10 +973,12 @@ class DesktopHost with TrayListener, WindowListener {
       final obedient = _bubbleObedient;
       final contentSize =
           obedient ? obedientBubbleContentSize : normalBubbleContentSize;
+      final nativeBubbleSize =
+          Platform.isWindows ? windowsBubbleWindowSize : contentSize;
       final bubblePosition = calculateBubbleWindowPosition(
         petPosition: position,
         petSize: size,
-        bubbleSize: contentSize,
+        bubbleSize: nativeBubbleSize,
         visiblePosition: visiblePosition,
         visibleSize: visibleSize,
         dockSide: _bubbleDockSide,
@@ -1073,9 +1126,13 @@ class DesktopHost with TrayListener, WindowListener {
         route == ControlRoute.groups ||
         route == ControlRoute.media ||
         route == ControlRoute.about;
-    await windowManager.setTitle(settingsRoute ? '' : title);
+    await windowManager.setTitle(
+      settingsRoute && !Platform.isWindows ? '' : title,
+    );
     await windowManager.setTitleBarStyle(
-      settingsRoute ? TitleBarStyle.hidden : TitleBarStyle.normal,
+      settingsRoute && !Platform.isWindows
+          ? TitleBarStyle.hidden
+          : TitleBarStyle.normal,
     );
     await windowManager.setMinimumSize(_minimumControlSizeFor(route));
     await windowManager.setResizable(true);

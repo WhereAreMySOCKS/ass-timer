@@ -3,8 +3,22 @@ import 'package:ass_timer_flutter/core/theme/app_theme.dart';
 import 'package:ass_timer_flutter/core/widgets/speech_bubble.dart';
 import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:ass_timer_flutter/features/bubble/reminder_bubble.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+@visibleForTesting
+Alignment bubbleContentAlignmentFor(
+  TargetPlatform platform,
+  SpeechBubbleTail tail,
+) {
+  if (platform != TargetPlatform.windows) return Alignment.bottomCenter;
+  return switch (tail) {
+    SpeechBubbleTail.left => Alignment.bottomLeft,
+    SpeechBubbleTail.right => Alignment.bottomRight,
+    SpeechBubbleTail.bottom => Alignment.bottomCenter,
+  };
+}
 
 class BubbleWindowView extends ConsumerWidget {
   const BubbleWindowView({super.key});
@@ -17,7 +31,7 @@ class BubbleWindowView extends ConsumerWidget {
     return Material(
       type: MaterialType.transparency,
       child: Align(
-        alignment: Alignment.bottomCenter,
+        alignment: bubbleContentAlignmentFor(defaultTargetPlatform, tail),
         child: AnimatedSwitcher(
           duration: MediaQuery.disableAnimationsOf(context)
               ? Duration.zero
