@@ -1,7 +1,7 @@
 name: ass_timer_flutter
 description: Cross-platform Ass-Timer desktop pet for macOS and Windows.
 publish_to: none
-version: 2.1.0+1
+version: 2.1.1+2
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

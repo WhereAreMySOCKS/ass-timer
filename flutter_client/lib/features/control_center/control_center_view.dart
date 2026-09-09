@@ -1542,15 +1542,29 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
 
   Widget _buildHeader(List<JoinedGroup> groups) => Row(
         children: <Widget>[
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: const Color(0xFFE3E3E3)),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const SizedBox.square(
-              dimension: 42,
-              child: Icon(Icons.emoji_events_rounded, color: AppColors.accent),
+          Tooltip(
+            message:
+                widget.controller.leaderboardPeriod == LeaderboardPeriod.all
+                    ? '切换到 Today'
+                    : '切换到 All',
+            child: TextButton(
+              onPressed: _togglePeriod,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                backgroundColor: Colors.white,
+                minimumSize: const Size(70, 42),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                side: const BorderSide(color: Color(0xFFE3E3E3)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                widget.controller.leaderboardPeriod == LeaderboardPeriod.all
+                    ? 'All'
+                    : 'Today',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
           ),
           const SizedBox(width: 10),
@@ -1567,32 +1581,6 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
                 groups: groups,
                 selected: selected!,
                 onSelected: _selectGroup,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Tooltip(
-              message:
-                  widget.controller.leaderboardPeriod == LeaderboardPeriod.all
-                      ? '切换到 Today'
-                      : '切换到 All',
-              child: TextButton(
-                onPressed: _togglePeriod,
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.accent,
-                  backgroundColor: Colors.white,
-                  minimumSize: const Size(60, 42),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  side: const BorderSide(color: Color(0xFFE3E3E3)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                ),
-                child: Text(
-                  widget.controller.leaderboardPeriod == LeaderboardPeriod.all
-                      ? 'All'
-                      : 'Today',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
               ),
             ),
             const SizedBox(width: 8),
