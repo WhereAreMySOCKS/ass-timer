@@ -13,6 +13,7 @@ class AppStore {
 
   static const String _configKey = 'ass_timer_flutter_config_v2';
   static const String _nextReminderKey = 'ass_timer_flutter_next_reminder_at';
+  static const String _pendingEventsKey = 'ass_timer_flutter_pending_events';
   static const String _migrationKey = 'ass_timer_flutter_migration_version';
   static const MethodChannel _legacyChannel =
       MethodChannel('ass_timer/legacy_migration');
@@ -33,6 +34,27 @@ class AppStore {
   Future<void> saveConfig(UserConfig config) =>
       _preferences.setString(_configKey, config.encode());
 
+  Future<List<PendingEvent>> loadPendingEvents() async {
+    final encoded = await _preferences.getString(_pendingEventsKey);
+    if (encoded == null || encoded.isEmpty) return <PendingEvent>[];
+    try {
+      final raw = jsonDecode(encoded);
+      if (raw is! List<dynamic>) return <PendingEvent>[];
+      return raw
+          .whereType<Map<String, dynamic>>()
+          .map(PendingEvent.fromJson)
+          .toList(growable: false);
+    } on Object {
+      return <PendingEvent>[];
+    }
+  }
+
+  Future<void> savePendingEvents(List<PendingEvent> events) =>
+      _preferences.setString(
+        _pendingEventsKey,
+        jsonEncode(events.map((event) => event.toJson()).toList()),
+      );
+
   Future<DateTime?> loadNextReminderAt() async {
     final millis = await _preferences.getInt(_nextReminderKey);
     return millis == null ? null : DateTime.fromMillisecondsSinceEpoch(millis);
@@ -49,6 +71,7 @@ class AppStore {
   Future<void> clearLocalState() async {
     await _preferences.remove(_configKey);
     await _preferences.remove(_nextReminderKey);
+    await _preferences.remove(_pendingEventsKey);
     // Keep migrationVersion=1. Otherwise the next launch would immediately
     // import the legacy Swift preferences that the user just chose to clear.
     final root = await appSupportRoot();

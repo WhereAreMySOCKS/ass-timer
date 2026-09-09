@@ -20,6 +20,7 @@ import 'package:ass_timer_flutter/domain/version_utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:uuid/uuid.dart';
 
 final appStoreProvider = Provider<AppStore>((ref) => AppStore());
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
@@ -89,6 +90,12 @@ class AppController extends ChangeNotifier {
   bool _groupsRefreshing = false;
   bool _leaderboardRefreshing = false;
   String? _leaderboardGroupId;
+  String? _queuedLeaderboardGroupId;
+  LeaderboardPeriod? _queuedLeaderboardPeriod;
+  Future<void> _pendingEventsWriteOperation = Future<void>.value();
+  Timer? _pendingEventsRetryTimer;
+  bool _pendingEventsFlushRunning = false;
+  final List<PendingEvent> _pendingEvents = <PendingEvent>[];
 
   AppSnapshot snapshot = AppSnapshot.initial();
   bool isReady = false;
@@ -101,6 +108,7 @@ class AppController extends ChangeNotifier {
   AppVersionInfo? availableUpdate;
   List<GroupInfo> groups = <GroupInfo>[];
   List<LeaderboardEntry> leaderboard = <LeaderboardEntry>[];
+  LeaderboardPeriod leaderboardPeriod = LeaderboardPeriod.all;
   bool leaderboardLoading = false;
   String? leaderboardError;
   final Map<String, List<ChatMessage>> chatMessages =
@@ -118,6 +126,9 @@ class AppController extends ChangeNotifier {
     if (isReady) return;
     await DesktopHost.instance.bindRoot(_handleWindowCommand);
     final config = await _store.loadConfig();
+    _pendingEvents
+      ..clear()
+      ..addAll(await _store.loadPendingEvents());
     final nextReminderAt = await _store.loadNextReminderAt();
     supportsBackgroundRemoval = await _customMedia.supportsBackgroundRemoval();
     snapshot = snapshot.copyWith(config: config);
@@ -243,9 +254,11 @@ class AppController extends ChangeNotifier {
     await _store.clearLocalState();
     groups = <GroupInfo>[];
     leaderboard = <LeaderboardEntry>[];
+    leaderboardPeriod = LeaderboardPeriod.all;
     leaderboardLoading = false;
     leaderboardError = null;
     _leaderboardGroupId = null;
+    _pendingEvents.clear();
     chatMessages.clear();
     activeChatGroupId = null;
     availableUpdate = null;
@@ -277,19 +290,23 @@ class AppController extends ChangeNotifier {
     final config = snapshot.config.copyWith(
       localEventCount: snapshot.config.localEventCount + 1,
     );
-    _update(config: config, currentSprite: '得意');
-    await _store.saveConfig(config);
-
     final userId = config.userId;
     if (userId != null) {
-      unawaited(
-        _apiClient
-            .logEvent(
-              userId,
-              config.joinedGroups.map((group) => group.groupId).toList(),
-            )
-            .catchError((Object error) => _showError('无法连接后端，已记录本地')),
+      await _enqueuePendingEvent(
+        PendingEvent(
+          eventId: const Uuid().v4(),
+          userId: userId,
+          groupIds: config.joinedGroups
+              .map((group) => group.groupId)
+              .toList(growable: false),
+          occurredAt: DateTime.now().toUtc(),
+        ),
       );
+    }
+    _update(config: config, currentSprite: '得意');
+    await _store.saveConfig(config);
+    if (userId != null) {
+      unawaited(_flushPendingEvents());
     }
   }
 
@@ -499,20 +516,39 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshLeaderboard(String groupId) async {
-    if (_leaderboardRefreshing) return;
+  Future<void> refreshLeaderboard(
+    String groupId, {
+    LeaderboardPeriod period = LeaderboardPeriod.all,
+  }) async {
+    if (_leaderboardRefreshing) {
+      _queuedLeaderboardGroupId = groupId;
+      _queuedLeaderboardPeriod = period;
+      return;
+    }
     _leaderboardRefreshing = true;
     try {
-      if (_leaderboardGroupId != groupId) {
-        leaderboard = await _remoteDataCache.loadLeaderboard(groupId);
+      if (_leaderboardGroupId != groupId || leaderboardPeriod != period) {
+        leaderboard = await _remoteDataCache.loadLeaderboard(
+          groupId,
+          period: period,
+        );
         _leaderboardGroupId = groupId;
+        leaderboardPeriod = period;
       }
       leaderboardLoading = leaderboard.isEmpty;
       leaderboardError = null;
       notifyListeners();
       try {
-        leaderboard = await _apiClient.getLeaderboard(groupId);
-        await _remoteDataCache.saveLeaderboard(groupId, leaderboard);
+        leaderboard = await _apiClient.getLeaderboard(
+          groupId,
+          period: period,
+        );
+        leaderboardPeriod = period;
+        await _remoteDataCache.saveLeaderboard(
+          groupId,
+          leaderboard,
+          period: period,
+        );
       } on Object {
         if (leaderboard.isEmpty) {
           leaderboardError = '排行榜加载失败，请重试';
@@ -522,6 +558,18 @@ class AppController extends ChangeNotifier {
       leaderboardLoading = false;
       _leaderboardRefreshing = false;
       notifyListeners();
+      final queuedGroupId = _queuedLeaderboardGroupId;
+      final queuedPeriod = _queuedLeaderboardPeriod;
+      _queuedLeaderboardGroupId = null;
+      _queuedLeaderboardPeriod = null;
+      if (queuedGroupId != null &&
+          queuedPeriod != null &&
+          (queuedGroupId != _leaderboardGroupId ||
+              queuedPeriod != leaderboardPeriod)) {
+        unawaited(
+          refreshLeaderboard(queuedGroupId, period: queuedPeriod),
+        );
+      }
     }
   }
 
@@ -712,7 +760,12 @@ class AppController extends ChangeNotifier {
       case WindowCommand.refreshGroups:
         await refreshGroups();
       case WindowCommand.refreshLeaderboard:
-        await refreshLeaderboard(arguments['groupId'] as String);
+        await refreshLeaderboard(
+          arguments['groupId'] as String,
+          period: LeaderboardPeriod.values.byName(
+            arguments['period'] as String? ?? leaderboardPeriod.name,
+          ),
+        );
       case WindowCommand.loadChat:
         await loadChat(arguments['groupId'] as String);
       case WindowCommand.sendChat:
@@ -757,6 +810,7 @@ class AppController extends ChangeNotifier {
         'leaderboardLoading': leaderboardLoading,
         'leaderboardError': leaderboardError,
         'leaderboardGroupId': _leaderboardGroupId,
+        'leaderboardPeriod': leaderboardPeriod.name,
         'chatMessages': chatMessages.map(
           (groupId, messages) => MapEntry(
             groupId,
@@ -796,6 +850,7 @@ class AppController extends ChangeNotifier {
     _windowStateBroadcastThrottle.dispose();
     _updateCheckTimer?.cancel();
     _interactionTimer?.cancel();
+    _pendingEventsRetryTimer?.cancel();
     unawaited(_webSocket.disconnect());
     super.dispose();
   }
@@ -808,6 +863,11 @@ class AppController extends ChangeNotifier {
     final userId = snapshot.config.userId;
     if (userId != null) unawaited(_webSocket.connect(userId));
     if (userId != null) unawaited(refreshGroups());
+    _pendingEventsRetryTimer?.cancel();
+    _pendingEventsRetryTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      unawaited(_flushPendingEvents());
+    });
+    if (userId != null) unawaited(_flushPendingEvents());
     unawaited(checkForUpdate(silent: true));
     _updateCheckTimer?.cancel();
     _updateCheckTimer = Timer.periodic(const Duration(hours: 6), (_) {
@@ -863,7 +923,64 @@ class AppController extends ChangeNotifier {
     if (backendConnectionState == state) return;
     backendConnectionState = state;
     notifyListeners();
+    if (state == BackendConnectionState.connected) {
+      unawaited(_flushPendingEvents());
+    }
   }
+
+  Future<void> _enqueuePendingEvent(PendingEvent event) =>
+      _persistPendingEventsAfter(() async {
+        _pendingEvents.add(event);
+      });
+
+  Future<void> _flushPendingEvents() async {
+    if (_pendingEventsFlushRunning) return;
+    _pendingEventsFlushRunning = true;
+    try {
+      final userId = snapshot.config.userId;
+      if (userId == null || _pendingEvents.isEmpty) return;
+
+      for (final event in List<PendingEvent>.of(_pendingEvents)) {
+        if (event.userId != userId) continue;
+        try {
+          await _apiClient.logEvent(
+            event.userId,
+            event.groupIds,
+            clientEventId: event.eventId,
+            timestamp: event.occurredAt,
+          );
+        } on Object {
+          // Keep the event on disk. The periodic retry and reconnect hook
+          // will try again without losing the user's completion.
+          break;
+        }
+        _pendingEvents.removeWhere(
+          (candidate) => candidate.eventId == event.eventId,
+        );
+        await _persistPendingEvents();
+      }
+    } finally {
+      _pendingEventsFlushRunning = false;
+    }
+  }
+
+  Future<void> _persistPendingEventsAfter(
+    Future<void> Function() action,
+  ) async {
+    final previous = _pendingEventsWriteOperation;
+    final gate = Completer<void>();
+    _pendingEventsWriteOperation = gate.future;
+    try {
+      await previous;
+      await action();
+      await _store.savePendingEvents(_pendingEvents);
+    } finally {
+      gate.complete();
+    }
+  }
+
+  Future<void> _persistPendingEvents() =>
+      _persistPendingEventsAfter(() async {});
 
   Future<void> _handleIncomingChat(ChatMessage message) async {
     chatMessages[message.groupId] = await _chatCache.merge(
@@ -1008,6 +1125,9 @@ class ReplicaAppController extends AppController {
     leaderboardLoading = payload['leaderboardLoading'] as bool? ?? false;
     leaderboardError = payload['leaderboardError'] as String?;
     _leaderboardGroupId = payload['leaderboardGroupId'] as String?;
+    leaderboardPeriod = LeaderboardPeriod.values.byName(
+      payload['leaderboardPeriod'] as String? ?? LeaderboardPeriod.all.name,
+    );
     chatMessages
       ..clear()
       ..addAll(
@@ -1068,10 +1188,16 @@ class ReplicaAppController extends AppController {
       DesktopHost.instance.sendCommand(WindowCommand.refreshGroups);
 
   @override
-  Future<void> refreshLeaderboard(String groupId) =>
+  Future<void> refreshLeaderboard(
+    String groupId, {
+    LeaderboardPeriod period = LeaderboardPeriod.all,
+  }) =>
       DesktopHost.instance.sendCommand(
         WindowCommand.refreshLeaderboard,
-        arguments: <String, dynamic>{'groupId': groupId},
+        arguments: <String, dynamic>{
+          'groupId': groupId,
+          'period': period.name,
+        },
       );
 
   @override

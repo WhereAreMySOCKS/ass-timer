@@ -1,4 +1,4 @@
-Ass-Timer 2.0.0 (Windows x64 portable)
+Ass-Timer 2.1.0 (Windows x64 portable)
 
 1. Extract the entire ZIP to a writable folder.
 2. Run Ass-Timer.exe. Keep the data and DLL files beside the executable.

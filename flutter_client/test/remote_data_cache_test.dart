@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:ass_timer_flutter/data/api_models.dart';
 import 'package:ass_timer_flutter/data/remote_data_cache.dart';
+import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -51,5 +52,49 @@ void main() {
     final restored = await cache.loadLeaderboard('group-a');
     expect(restored.single.count, 8);
     expect(restored.single.avatarUrl, '/uploads/avatars/a.png');
+  });
+
+  test('keeps Today and All leaderboard caches separate', () async {
+    const all = <LeaderboardEntry>[
+      LeaderboardEntry(
+        rank: 1,
+        userId: 'user-a',
+        nickname: 'Paul',
+        petEmoji: '🦌',
+        avatarUrl: '',
+        count: 8,
+      ),
+    ];
+    const today = <LeaderboardEntry>[
+      LeaderboardEntry(
+        rank: 1,
+        userId: 'user-a',
+        nickname: 'Paul',
+        petEmoji: '🦌',
+        avatarUrl: '',
+        count: 2,
+      ),
+    ];
+
+    await cache.saveLeaderboard('group-a', all);
+    await cache.saveLeaderboard(
+      'group-a',
+      today,
+      period: LeaderboardPeriod.today,
+    );
+
+    expect(
+      (await cache.loadLeaderboard('group-a')).single.count,
+      8,
+    );
+    expect(
+      (await cache.loadLeaderboard(
+        'group-a',
+        period: LeaderboardPeriod.today,
+      ))
+          .single
+          .count,
+      2,
+    );
   });
 }

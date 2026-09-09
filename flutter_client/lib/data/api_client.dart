@@ -118,9 +118,17 @@ class ApiClient {
     return GroupInfo.fromJson(_requireMap(response));
   }
 
-  Future<List<LeaderboardEntry>> getLeaderboard(String groupId) async {
+  Future<List<LeaderboardEntry>> getLeaderboard(
+    String groupId, {
+    LeaderboardPeriod period = LeaderboardPeriod.all,
+  }) async {
     final response = await _dio.get<Map<String, dynamic>>(
       '/group/$groupId/rank',
+      queryParameters: <String, dynamic>{
+        'period': period.name,
+        if (period == LeaderboardPeriod.today)
+          'timezone_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
+      },
     );
     final entries =
         _requireMap(response)['entries'] as List<dynamic>? ?? const <dynamic>[];
@@ -164,12 +172,19 @@ class ApiClient {
     return ChatMessage.fromJson(_requireMap(response));
   }
 
-  Future<void> logEvent(String userId, List<String> groupIds) async {
+  Future<void> logEvent(
+    String userId,
+    List<String> groupIds, {
+    required String clientEventId,
+    required DateTime timestamp,
+  }) async {
     await _dio.post<Map<String, dynamic>>(
       '/event',
       data: <String, dynamic>{
         'user_id': userId,
         if (groupIds.isNotEmpty) 'group_ids': groupIds,
+        'client_event_id': clientEventId,
+        'timestamp': timestamp.toUtc().toIso8601String(),
       },
     );
   }

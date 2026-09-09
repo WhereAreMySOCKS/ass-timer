@@ -185,7 +185,10 @@ class _FakeController extends AppController {
   Future<void> refreshGroups() async {}
 
   @override
-  Future<void> refreshLeaderboard(String groupId) async {}
+  Future<void> refreshLeaderboard(
+    String groupId, {
+    LeaderboardPeriod period = LeaderboardPeriod.all,
+  }) async {}
 
   @override
   Future<void> loadChat(String groupId) async {}

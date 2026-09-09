@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:ass_timer_flutter/data/api_models.dart';
 import 'package:ass_timer_flutter/data/app_store.dart';
+import 'package:ass_timer_flutter/domain/app_models.dart';
 import 'package:path/path.dart' as p;
 
 class RemoteDataCache {
@@ -20,17 +21,29 @@ class RemoteDataCache {
         groups.map((group) => group.toJson()).toList(growable: false),
       );
 
-  Future<List<LeaderboardEntry>> loadLeaderboard(String groupId) => _loadList(
-        'leaderboard-${_safeName(groupId)}.json',
-        LeaderboardEntry.fromJson,
-      );
+  Future<List<LeaderboardEntry>> loadLeaderboard(
+    String groupId, {
+    LeaderboardPeriod period = LeaderboardPeriod.all,
+  }) async {
+    final entries = await _loadList(
+      'leaderboard-${_safeName(groupId)}-${period.name}.json',
+      LeaderboardEntry.fromJson,
+    );
+    if (entries.isNotEmpty || period != LeaderboardPeriod.all) return entries;
+    // Keep the pre-period cache usable for All while it is refreshed online.
+    return _loadList(
+      'leaderboard-${_safeName(groupId)}.json',
+      LeaderboardEntry.fromJson,
+    );
+  }
 
   Future<void> saveLeaderboard(
     String groupId,
-    List<LeaderboardEntry> entries,
-  ) =>
+    List<LeaderboardEntry> entries, {
+    LeaderboardPeriod period = LeaderboardPeriod.all,
+  }) =>
       _saveList(
-        'leaderboard-${_safeName(groupId)}.json',
+        'leaderboard-${_safeName(groupId)}-${period.name}.json',
         entries.map((entry) => entry.toJson()).toList(growable: false),
       );
 

@@ -1470,8 +1470,20 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
   }
 
   Future<void> _refresh(String groupId) async {
-    await widget.controller.refreshLeaderboard(groupId);
+    await widget.controller.refreshLeaderboard(
+      groupId,
+      period: widget.controller.leaderboardPeriod,
+    );
     if (widget.controller.leaderboardError != null) refreshTimer?.cancel();
+  }
+
+  void _togglePeriod() {
+    final groupId = selected;
+    if (groupId == null) return;
+    final period = widget.controller.leaderboardPeriod == LeaderboardPeriod.all
+        ? LeaderboardPeriod.today
+        : LeaderboardPeriod.all;
+    unawaited(widget.controller.refreshLeaderboard(groupId, period: period));
   }
 
   @override
@@ -1519,7 +1531,8 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
           const SizedBox(height: 12),
           _MyLeaderboardSummary(
             exerciseName: widget.controller.exerciseName,
-            total: widget.controller.snapshot.config.localEventCount,
+            period: widget.controller.leaderboardPeriod,
+            total: myEntry?.count ?? 0,
             rank: myEntry?.rank,
           ),
         ],
@@ -1549,7 +1562,7 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
           ),
           if (groups.isNotEmpty && selected != null) ...<Widget>[
             ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 172),
+              constraints: const BoxConstraints(maxWidth: 120),
               child: _GroupSelector(
                 groups: groups,
                 selected: selected!,
@@ -1557,9 +1570,38 @@ class _LeaderboardPaneState extends State<_LeaderboardPane> {
               ),
             ),
             const SizedBox(width: 8),
+            Tooltip(
+              message:
+                  widget.controller.leaderboardPeriod == LeaderboardPeriod.all
+                      ? '切换到 Today'
+                      : '切换到 All',
+              child: TextButton(
+                onPressed: _togglePeriod,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.accent,
+                  backgroundColor: Colors.white,
+                  minimumSize: const Size(60, 42),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  side: const BorderSide(color: Color(0xFFE3E3E3)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                ),
+                child: Text(
+                  widget.controller.leaderboardPeriod == LeaderboardPeriod.all
+                      ? 'All'
+                      : 'Today',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
             IconButton(
               tooltip: '刷新排行榜',
-              onPressed: () => widget.controller.refreshLeaderboard(selected!),
+              onPressed: () => widget.controller.refreshLeaderboard(
+                selected!,
+                period: widget.controller.leaderboardPeriod,
+              ),
               style: IconButton.styleFrom(
                 foregroundColor: AppColors.secondaryText,
                 backgroundColor: Colors.white,
@@ -1861,11 +1903,13 @@ class _RankBadge extends StatelessWidget {
 class _MyLeaderboardSummary extends StatelessWidget {
   const _MyLeaderboardSummary({
     required this.exerciseName,
+    required this.period,
     required this.total,
     required this.rank,
   });
 
   final String exerciseName;
+  final LeaderboardPeriod period;
   final int total;
   final int? rank;
 
@@ -1887,7 +1931,7 @@ class _MyLeaderboardSummary extends StatelessWidget {
             const SizedBox(width: 9),
             Expanded(
               child: Text(
-                '我的总$exerciseName',
+                '我的${period == LeaderboardPeriod.today ? '今日' : '总'}$exerciseName',
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),

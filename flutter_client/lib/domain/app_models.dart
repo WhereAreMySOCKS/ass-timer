@@ -18,6 +18,38 @@ enum ControlRoute { timer, groups, chat, leaderboard, media, about }
 
 enum WindowRole { pet, bubble, controlCenter }
 
+enum LeaderboardPeriod { today, all }
+
+class PendingEvent {
+  const PendingEvent({
+    required this.eventId,
+    required this.userId,
+    required this.groupIds,
+    required this.occurredAt,
+  });
+
+  factory PendingEvent.fromJson(Map<String, dynamic> json) => PendingEvent(
+        eventId: json['eventId'] as String,
+        userId: json['userId'] as String,
+        groupIds: (json['groupIds'] as List<dynamic>? ?? const <dynamic>[])
+            .whereType<String>()
+            .toList(growable: false),
+        occurredAt: DateTime.parse(json['occurredAt'] as String).toUtc(),
+      );
+
+  final String eventId;
+  final String userId;
+  final List<String> groupIds;
+  final DateTime occurredAt;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'eventId': eventId,
+        'userId': userId,
+        'groupIds': groupIds,
+        'occurredAt': occurredAt.toUtc().toIso8601String(),
+      };
+}
+
 class JoinedGroup {
   const JoinedGroup({
     required this.groupId,
